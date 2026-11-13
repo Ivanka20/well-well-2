@@ -4,178 +4,126 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>well well</title>
-  <meta name="description" content="Tu proceso médico, a la vista: línea del tiempo, medicinas, citas, expediente y un asistente que explica todo en palabras sencillas." />
+  <meta name="description" content="Tu proceso médico, paso a paso y sin palabras raras: ruta, medicinas, citas, expediente y avisos." />
   <meta name="theme-color" content="#E0FAFF" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Alfa+Slab+One&family=Bebas+Neue&family=Bowlby+One&family=Bungee&family=Rubik+Mono+One&family=Shrikhand&family=Ultra&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Bungee&family=DM+Serif+Display:ital@1&family=Rubik+Mono+One&family=Shrikhand&family=Space+Mono:wght@700&family=Young+Serif&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-  <!-- ================= BARRA DE NAVEGACIÓN ================= -->
-  <header class="nav">
-    <nav class="nav-links">
-      <a href="#/asistente" class="nav-link" data-nav="asistente">
-        <span class="nav-lupi" aria-hidden="true"></span>Asistente
-      </a>
-      <a href="#/ingresar" class="nav-link nav-cta" data-nav="ingresar" id="navIngresar">Ingresar</a>
-    </nav>
+  <!-- ================= BARRA SUPERIOR (portada, Lupi, ingresar) ================= -->
+  <header class="topbar" id="topbar">
+    <a href="#/asistente" class="lupi-pill" data-nav="asistente"><span class="nav-lupi" aria-hidden="true"></span>Lupi</a>
+    <a href="#/ingresar" class="top-link" id="navIngresar" data-nav="ingresar">Ingresar</a>
   </header>
 
   <main id="main">
 
-    <!-- ================= INICIO ================= -->
-    <section class="view" data-view="home">
-      <div class="hero">
-        <h1 class="hero-title"><span data-cut="well well" data-seed="7"></span></h1>
-        <div class="hero-actions">
-          <a href="#/ingresar" class="btn btn-ink">Ingresar con mi ID</a>
-        </div>
-        <div class="hero-stickers" aria-hidden="true">
-          <span class="sticker s-a">¡hola!</span>
-          <span class="sticker s-b">paso a paso</span>
-          <span class="sticker s-c">sin palabras raras</span>
-        </div>
+    <!-- ================= PORTADA ================= -->
+    <section class="view screen" data-view="home">
+      <div class="home-head">
+        <h1 class="home-logo"><span data-cut="well well" data-size="38" data-seed="0"></span></h1>
+        <p class="home-tag">¡hola! paso a paso,<br>sin palabras raras</p>
+      </div>
+      <a href="#/ingresar" class="btn btn-primary btn-xl">Ingresar con mi ID →</a>
+
+      <div class="band" id="avisosBand" aria-label="Avisos del hospital" hidden>
+        <div class="band-track" id="marqueeTrack"></div>
       </div>
 
-      <div class="marquee" id="avisosBand" aria-label="Avisos del hospital" hidden>
-        <span class="mq-label">Avisos del hospital</span>
-        <div class="mq-viewport"><div class="marquee-track" id="marqueeTrack"></div></div>
-      </div>
+      <section class="block">
+        <h2 class="h-sub">Rumbo al alta</h2>
+        <div class="rumbo" id="rumbo"></div>
+        <p class="rumbo-txt" id="rumboTxt" aria-live="polite"></p>
+      </section>
 
-      <!-- Carrusel -->
-      <div class="carousel-wrap">
-        <div class="section-head">
-          <div><h2 class="mag-h">Rumbo al alta</h2></div>
-          <div class="carousel-ctrl">
-            <button class="round-btn" id="carPrev" aria-label="Anterior">&larr;</button>
-            <button class="round-btn" id="carNext" aria-label="Siguiente">&rarr;</button>
-          </div>
-        </div>
-        <div class="carousel" id="carousel" tabindex="0" aria-label="Del ingreso al alta, paso a paso"></div>
-        <div class="dots" id="carDots"></div>
-      </div>
+      <section class="block">
+        <h2 class="h-sub">¿Quién eres?</h2>
+        <div class="quien" id="quien"></div>
+      </section>
 
-      <!-- Desplegables -->
-      <div class="fold-wrap">
-        <h2 class="mag-h">¿Quién eres?</h2>
-        <div class="folds" id="folds"></div>
-      </div>
-
-      <footer class="foot">
-        <span data-cut="well well" data-seed="7" class="foot-logo"></span>
-        <p>Ante una emergencia, avisa de inmediato a tu enfermera o médico.</p>
-      </footer>
+      <p class="note-dashed">Ante una emergencia, avisa de inmediato a tu enfermera o médico.</p>
     </section>
 
-    <!-- ================= ASISTENTE (LUPI) ================= -->
-    <section class="view" data-view="asistente" hidden>
-      <div class="lupi-page">
-        <div class="lupi-stage">
-          <div class="lupi-big" id="lupiBig" data-state="idle"></div>
-          <div class="bubble" id="lupiBubble" aria-live="polite">
-            <p class="bubble-term" id="bubbleTerm"></p>
-            <div class="bubble-text" id="bubbleText"></div>
-          </div>
-        </div>
+    <!-- ================= LUPI ================= -->
+    <section class="view screen" data-view="asistente" hidden>
+      <a href="#/" class="btn-back" id="lupiBack">← Volver</a>
+      <h1 class="screen-title"><span data-cut="Pregúntale a Lupi" data-size="30" data-seed="3"></span></h1>
 
-        <div class="lupi-panel">
-          <h1 data-cut="pregúntale a lupi" data-seed="53"></h1>
-
-          <div class="mode-switch" role="radiogroup" aria-label="¿Cómo te lo explico?">
-            <button type="button" class="mode-btn active" data-mode="nino" role="radio" aria-checked="true">Para peques</button>
-            <button type="button" class="mode-btn" data-mode="adulto" role="radio" aria-checked="false">Para grandes</button>
-          </div>
-
-          <form id="lupiForm" class="lupi-form" autocomplete="off">
-            <label for="lupiInput" class="sr-only">Escribe una palabra o pregunta</label>
-            <input id="lupiInput" maxlength="300" placeholder="¿Qué palabra no entiendes?" />
-            <button type="submit" class="btn btn-ink" id="lupiSend">Explícame</button>
-          </form>
-
-          <div class="chips" id="lupiChips"></div>
-
-          <div class="collection-head">
-            <h2 class="mag-h">Mis tarjetas</h2>
-            <button type="button" class="link-btn" id="clearCards" hidden>borrar</button>
-          </div>
-          <div class="cards-grid" id="lupiCards"></div>
+      <div class="lupi-stage">
+        <div class="lupi-big" id="lupiBig" data-state="idle"></div>
+        <div class="bubble" id="lupiBubble" aria-live="polite">
+          <p class="bubble-term" id="bubbleTerm"></p>
+          <div class="bubble-text" id="bubbleText"></div>
         </div>
       </div>
+
+      <div class="seg" role="radiogroup" aria-label="¿Cómo te lo explico?">
+        <button type="button" class="seg-btn mode-btn active" data-mode="nino" role="radio" aria-checked="true">Para peques</button>
+        <button type="button" class="seg-btn mode-btn" data-mode="adulto" role="radio" aria-checked="false">Para grandes</button>
+      </div>
+
+      <form id="lupiForm" class="lupi-form" autocomplete="off">
+        <label for="lupiInput" class="sr-only">Escribe una palabra o pregunta</label>
+        <input id="lupiInput" maxlength="300" placeholder="¿Qué palabra no entiendes?" />
+        <button type="submit" class="btn btn-primary" id="lupiSend">Explícame</button>
+      </form>
+
+      <div class="chips" id="lupiChips"></div>
+
+      <div class="row-between">
+        <h2 class="h-sub">Mis tarjetas</h2>
+        <button type="button" class="btn-soft btn-sm" id="clearCards" hidden>Borrar</button>
+      </div>
+      <div class="cards-grid" id="lupiCards"></div>
     </section>
 
     <!-- ================= INGRESAR ================= -->
-    <section class="view" data-view="ingresar" hidden>
-      <div class="login-page">
-        <h1 data-cut="ingresa" data-seed="71"></h1>
+    <section class="view screen" data-view="ingresar" hidden>
+      <a href="#/" class="btn-back">← Volver</a>
+      <h1 class="screen-title"><span data-cut="Ingresa" data-size="38" data-seed="5"></span></h1>
 
-        <div class="role-pick" role="tablist">
-          <button type="button" class="role-card active" data-role="paciente" role="tab" aria-selected="true">
-            <span class="role-name">Paciente</span>
-            <small>o familiar</small>
-          </button>
-          <button type="button" class="role-card" data-role="personal" role="tab" aria-selected="false">
-            <span class="role-name">Personal</span>
-            <small>de apoyo</small>
-          </button>
-        </div>
-
-        <form id="loginForm" class="paper login-form" novalidate>
-          <span class="tape"></span>
-          <label for="loginId" id="loginIdLabel">ID de paciente</label>
-          <input id="loginId" autocomplete="username" placeholder="WW-0000-00" maxlength="20" />
-          <label for="loginCode">Código de acceso</label>
-          <input id="loginCode" type="password" autocomplete="current-password" placeholder="••••••" maxlength="40" />
-          <p class="form-error" id="loginError" role="alert"></p>
-          <button type="submit" class="btn btn-ink btn-full" id="loginBtn">Entrar</button>
-          <p class="hint" id="loginHint"></p>
-        </form>
+      <div class="seg seg-big" role="tablist">
+        <button type="button" class="seg-btn role-card active" data-role="paciente" role="tab" aria-selected="true">Paciente o familiar</button>
+        <button type="button" class="seg-btn role-card" data-role="personal" role="tab" aria-selected="false">Personal de apoyo</button>
       </div>
+
+      <form id="loginForm" class="card login-form" novalidate>
+        <label for="loginId" id="loginIdLabel">ID de paciente</label>
+        <input id="loginId" class="mono" autocomplete="username" placeholder="WW-0000-00" maxlength="20" />
+        <label for="loginCode">Código de acceso</label>
+        <input id="loginCode" type="password" autocomplete="current-password" placeholder="••••••" maxlength="40" />
+        <p class="form-error" id="loginError" role="alert"></p>
+        <button type="submit" class="btn btn-primary btn-xl" id="loginBtn">Entrar →</button>
+        <p class="hint" id="loginHint"></p>
+      </form>
     </section>
 
-    <!-- ================= APP PACIENTE ================= -->
-    <section class="view" data-view="app" hidden>
-      <div class="app-head">
-        <div>
-          <p class="app-hello" id="appHello"></p>
-          <p class="app-sub" id="appSub"></p>
-        </div>
-        <div class="app-head-right">
-          <span class="badge" id="modeBadge" hidden>modo demo</span>
-          <button class="btn btn-small btn-ghost" id="logoutBtn">Salir</button>
-        </div>
-      </div>
-      <nav class="tabs" id="appTabs" aria-label="Secciones"></nav>
-      <div class="app-body" id="appBody"></div>
+    <!-- ================= APP DEL PACIENTE ================= -->
+    <section class="view screen app-screen" data-view="app" hidden>
+      <div id="appBody"></div>
     </section>
 
-    <!-- ================= APP PERSONAL ================= -->
-    <section class="view" data-view="personal" hidden>
-      <div class="app-head">
-        <div>
-          <p class="app-hello" id="staffHello"></p>
-          <p class="app-sub" id="staffSub"></p>
-        </div>
-        <div class="app-head-right">
-          <span class="badge" id="staffBadge" hidden>modo demo</span>
-          <button class="btn btn-small btn-ghost" id="staffLogout">Salir</button>
-        </div>
-      </div>
-      <div class="staff-grid">
-        <aside class="staff-list" id="staffList"></aside>
-        <div class="staff-main" id="staffMain"></div>
-      </div>
+    <!-- ================= PANEL DE RECEPCIÓN ================= -->
+    <section class="view screen app-screen" data-view="personal" hidden>
+      <div id="staffBody"></div>
     </section>
   </main>
 
-  <dialog class="doc-dialog" id="docDialog">
-    <div id="docDialogBody"></div>
-    <div class="doc-dialog-actions">
-      <button type="button" class="btn btn-ink" id="docDialogDownload">Descargar</button>
-      <button type="button" class="btn btn-ghost" id="docDialogClose">Cerrar</button>
-    </div>
-  </dialog>
+  <!-- Barra inferior del paciente -->
+  <nav class="bottom-nav" id="bottomNav" hidden aria-label="Secciones">
+    <a href="#/app/inicio" data-tab="inicio">Inicio</a>
+    <a href="#/app/ruta" data-tab="ruta">Mi ruta</a>
+    <a href="#/app/expediente" data-tab="expediente">Expediente</a>
+    <a href="#/asistente" data-tab="asistente"><span class="nav-lupi sm" aria-hidden="true"></span>Lupi</a>
+  </nav>
+
+  <!-- Hoja inferior (urgente, aviso, documento) -->
+  <div class="sheet-backdrop" id="sheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" id="sheetPanel"></div>
+  </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
