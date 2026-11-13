@@ -1,209 +1,131 @@
 /* =========================================================
-   well well · interfaz
-   Rutas:  #/              inicio
+   well well · interfaz (rediseño de Claude Design)
+   Rutas:  #/              portada
            #/asistente     Lupi
            #/ingresar      acceso con ID
            #/app/<sección> paciente o familiar
-           #/personal      personal de apoyo (recepción)
+           #/personal      recepción (personal de apoyo)
    ========================================================= */
 (function () {
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const COLORS = ["frosted", "slate", "honeydew"];
+  const cutTitle = (text, size, seed) => `<h1 class="screen-title"><span data-cut="${esc(text)}" data-size="${size || 32}" data-seed="${seed || 0}"></span></h1>`;
+  const face = (px) => `<span class="face">${lupiSVG(px || 30)}</span>`;
 
-  /* ---------- formato de fechas ---------- */
+  /* ---------- fechas ---------- */
   const fFecha = (d) => new Date(d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
+  const fCorta = (d) => new Date(d + (String(d).length === 10 ? "T12:00:00" : "")).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
   const fHora = (d) => new Date(d).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
   const fDia = (d) => new Date(d + (String(d).length === 10 ? "T12:00:00" : "")).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+  function dayDiff(d) {
+    const now = new Date(), t = new Date(d);
+    return Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  }
   function cuando(d) {
-    const now = new Date(); const t = new Date(d);
-    const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const b = new Date(t.getFullYear(), t.getMonth(), t.getDate());
-    const days = Math.round((b - a) / 86400000);
-    if (days === 0) return "hoy";
-    if (days === 1) return "mañana";
-    if (days === -1) return "ayer";
-    if (days > 1) return `en ${days} días`;
-    return `hace ${-days} días`;
+    const n = dayDiff(d);
+    if (n === 0) return "hoy";
+    if (n === 1) return "mañana";
+    if (n === -1) return "ayer";
+    return n > 1 ? `en ${n} días` : `hace ${-n} días`;
+  }
+  function falta(d) {
+    const min = Math.round((new Date(d) - new Date()) / 60000);
+    if (min < 1) return "ahora";
+    if (min < 60) return `en ${min} min`;
+    if (dayDiff(d) === 0) return `en ${Math.round(min / 60)} h`;
+    return cuando(d);
   }
   function edad(fn) {
-    if (!fn) return "";
+    if (!fn) return "—";
     const b = new Date(fn + "T12:00:00"), n = new Date();
     let e = n.getFullYear() - b.getFullYear();
     if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) e--;
     return e + " años";
   }
 
-  /* ---------- íconos ---------- */
-  const I = {
-    inicio: '<path d="M6 22L24 7l18 15"/><path d="M11 19v22h26V19"/><path d="M20 41V29h8v12"/>',
-    ruta: '<circle cx="11" cy="38" r="4"/><path d="M15 38h12a7 7 0 0 0 0-14H19a7 7 0 0 1 0-14h10"/><path d="M33 4v14M33 4l9 4-9 4"/>',
-    medicinas: '<rect x="6" y="18" width="36" height="14" rx="7" transform="rotate(-35 24 25)"/><path d="M20 15l10 16"/>',
-    citas: '<rect x="6" y="10" width="36" height="32" rx="5"/><path d="M6 20h36M16 6v8M32 6v8"/><circle cx="24" cy="31" r="4"/>',
-    expediente: '<path d="M6 14a4 4 0 0 1 4-4h10l4 5h14a4 4 0 0 1 4 4v19a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/><path d="M16 28h16M16 34h10"/>',
-    avisos: '<path d="M12 34V22a12 12 0 0 1 24 0v12l4 4H8z"/><path d="M20 42a4 4 0 0 0 8 0"/>',
-    chat: '<circle cx="16" cy="18" r="9"/><circle cx="32" cy="28" r="9"/><path d="M13 18h.01M19 18h.01M29 28h.01M35 28h.01"/>',
-    equipo: '<circle cx="17" cy="16" r="6"/><circle cx="33" cy="18" r="5"/><path d="M5 40c0-7 6-12 12-12s12 5 12 12M28 40c0-6 3-10 8-10s8 4 8 10"/>',
-    megafono: '<path d="M8 20v8h6l16 10V10L14 20z"/><path d="M36 18a8 8 0 0 1 0 12"/>',
-    ver: '<path d="M4 24s7-13 20-13 20 13 20 13-7 13-20 13S4 24 4 24z"/><circle cx="24" cy="24" r="6"/>',
-    bajar: '<path d="M24 6v24M14 20l10 10 10-10"/><path d="M8 36v6h32v-6"/>',
-    casa: '<path d="M6 22L24 7l18 15"/><path d="M11 19v22h26V19"/>',
-  };
-  const icon = (k, cls) => `<svg class="ico ${cls || ""}" viewBox="0 0 48 48" aria-hidden="true">${I[k] || ""}</svg>`;
-
+  /* ---------- stickers del chat ---------- */
   const STICKERS = {
-    star: '<path d="M24 4l6 13 14 2-10 10 3 14-13-7-13 7 3-14L4 19l14-2z" fill="var(--honeydew)"/>',
-    heart: '<path d="M24 42S6 30 6 17a9 9 0 0 1 18-3 9 9 0 0 1 18 3c0 13-18 25-18 25z" fill="var(--slate)"/>',
-    sun: '<circle cx="24" cy="24" r="10" fill="var(--honeydew)"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7M9 9l5 5M34 34l5 5M39 9l-5 5M14 34l-5 5"/>',
-    smile: '<circle cx="24" cy="24" r="18" fill="var(--frosted)"/><path d="M16 27q8 8 16 0M18 19h.01M30 19h.01"/>',
-    cloud: '<path d="M14 36a9 9 0 0 1 0-18 12 12 0 0 1 22 2 8 8 0 0 1-1 16z" fill="var(--frosted)"/>',
+    star: '<path d="M24 4l6 13 14 2-10 10 3 14-13-7-13 7 3-14L4 19l14-2z" fill="var(--teal)"/>',
+    heart: '<path d="M24 42S6 30 6 17a9 9 0 0 1 18-3 9 9 0 0 1 18 3c0 13-18 25-18 25z" fill="var(--forest)"/>',
+    sun: '<circle cx="24" cy="24" r="10" fill="var(--teal)"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7M9 9l5 5M34 34l5 5M39 9l-5 5M14 34l-5 5"/>',
+    smile: '<circle cx="24" cy="24" r="18" fill="var(--mint)"/><path d="M16 27q8 8 16 0M18 19h.01M30 19h.01"/>',
+    cloud: '<path d="M14 36a9 9 0 0 1 0-18 12 12 0 0 1 22 2 8 8 0 0 1-1 16z" fill="var(--mint)"/>',
   };
   const sticker = (k) => `<svg class="stk" viewBox="0 0 48 48" aria-label="sticker">${STICKERS[k] || ""}</svg>`;
 
-  /* ---------- toast ---------- */
+  /* ---------- aviso flotante (con acción opcional, p. ej. "Deshacer") ---------- */
   let toastT;
-  function toast(msg) {
+  function toast(msg, action) {
     const t = $("#toast");
-    t.textContent = msg; t.classList.add("show");
-    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2600);
+    t.innerHTML = `<span class="dot-bang">✓</span><span class="msg">${esc(msg)}</span>${action ? `<button type="button">${esc(action.label)}</button>` : ""}`;
+    if (action) t.querySelector("button").onclick = () => { t.classList.remove("show"); action.run(); };
+    t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), action ? 4000 : 2600);
   }
 
+  /* ---------- hoja inferior ---------- */
+  function openSheet(html, mount) {
+    const panel = $("#sheetPanel");
+    panel.innerHTML = html;
+    $("#sheet").hidden = false;
+    $$("[data-close]", panel).forEach((b) => (b.onclick = closeSheet));
+    if (mount) mount(panel);
+  }
+  function closeSheet() { $("#sheet").hidden = true; $("#sheetPanel").innerHTML = ""; }
+
   /* =========================================================
-     INICIO: avisos del hospital, carrusel y desplegables
+     PORTADA
      ========================================================= */
-  const A = "var(--slate)", B = "var(--frosted)", C = "var(--honeydew)", P = "var(--frosted)";
-  // carita feliz (el mismo personaje de Lupi) en (x, y) con radio r
-  const face = (x, y, r, cls) => `
-    <g class="${cls || ""}" transform="translate(${x} ${y})">
-      <circle r="${r}" fill="${B}" stroke="${A}" stroke-width="${r / 7}"/>
-      <ellipse cx="${-r * 0.32}" cy="${-r * 0.15}" rx="${r * 0.1}" ry="${r * 0.15}" fill="${A}" class="sc-eye"/>
-      <ellipse cx="${r * 0.32}" cy="${-r * 0.15}" rx="${r * 0.1}" ry="${r * 0.15}" fill="${A}" class="sc-eye"/>
-      <path d="M${-r * 0.42} ${r * 0.2} q${r * 0.42} ${r * 0.45} ${r * 0.84} 0" fill="none" stroke="${A}" stroke-width="${r / 8}" stroke-linecap="round"/>
-    </g>`;
+  const RUMBO = [["Llegas", "Te damos tu ID y te explicamos todo."], ["Te cuidamos", "Estudios y tratamiento, paso a paso."], ["Vas mejorando", "Cada paso listo suma."], ["¡De alta!", "¡A casa!"]];
+  let rumboPaso = 0, rumboTimer = null, quienOpen = -1;
 
-  const SCENES = [
-    {
-      title: "Llegas", line: "Te recibimos y te explicamos todo, sin prisa.",
-      svg: `
-        <rect x="40" y="120" width="220" height="14" rx="4" fill="${P}"/>
-        <rect x="40" y="96" width="14" height="60" rx="4" fill="${A}"/>
-        <rect x="246" y="108" width="14" height="48" rx="4" fill="${A}"/>
-        <rect x="58" y="98" width="56" height="24" rx="10" fill="${C}" stroke="${A}" stroke-width="4"/>
-        ${face(88, 88, 22, "sc-breathe")}
-        <path d="M110 104 h136 v18 h-136z" fill="${B}" stroke="${A}" stroke-width="4"/>
-        <line x1="270" y1="30" x2="270" y2="156" stroke="${A}" stroke-width="5" stroke-linecap="round"/>
-        <rect x="258" y="34" width="24" height="32" rx="6" fill="${C}" stroke="${A}" stroke-width="4"/>
-        <circle cx="270" cy="76" r="3.5" fill="${A}" class="sc-drip"/>
-        <text x="120" y="60" class="sc-z" fill="${A}">z</text>
-        <text x="138" y="44" class="sc-z sc-z2" fill="${A}">z</text>`,
-    },
-    {
-      title: "Te cuidamos", line: "Tu equipo está contigo de día y de noche.",
-      svg: `
-        ${face(110, 86, 42, "sc-bob")}
-        <path d="M215 72 c0-14 22-18 26-2 c4-16 26-12 26 2 c0 20-26 34-26 34 s-26-14-26-34z" fill="${A}" class="sc-beat"/>
-        <polyline points="20,160 90,160 105,136 120,182 138,124 152,160 280,160" fill="none" stroke="${A}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="sc-ecg"/>`,
-    },
-    {
-      title: "Vas mejorando", line: "Cada día, un pasito más arriba.",
-      svg: `
-        <rect x="40" y="140" width="44" height="30" fill="${P}" class="sc-grow"/>
-        <rect x="92" y="114" width="44" height="56" fill="${B}" stroke="${A}" stroke-width="4" class="sc-grow sc-g2"/>
-        <rect x="144" y="88" width="44" height="82" fill="${P}" class="sc-grow sc-g3"/>
-        <rect x="196" y="58" width="44" height="112" fill="${A}" class="sc-grow sc-g4"/>
-        <line x1="30" y1="170" x2="270" y2="170" stroke="${A}" stroke-width="5" stroke-linecap="round"/>
-        <g class="sc-climb">${face(0, 0, 18)}</g>
-        <path d="M250 50 l14 -16 l14 16 M264 34 v40" fill="none" stroke="${A}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="sc-arrow"/>`,
-    },
-    {
-      title: "¡De alta!", line: "De regreso a casa. ¡Lo lograste!",
-      svg: `
-        <path d="M180 80 l50 -40 l50 40 v90 h-100z" fill="${B}" stroke="${A}" stroke-width="5" stroke-linejoin="round"/>
-        <rect x="212" y="114" width="36" height="56" fill="${C}" stroke="${A}" stroke-width="4"/>
-        <rect x="212" y="114" width="36" height="56" fill="${A}" class="sc-door"/>
-        <line x1="20" y1="170" x2="290" y2="170" stroke="${A}" stroke-width="5" stroke-linecap="round"/>
-        <g class="sc-walk">${face(0, 0, 22)}</g>
-        ${[[30, P], [70, A], [110, B], [150, P], [190, A], [250, B], [280, P]].map(([x, c], k) => `<rect x="${x}" y="-12" width="8" height="12" rx="2" fill="${c}" class="sc-confetti" style="animation-delay:${(k * 0.35).toFixed(2)}s"/>`).join("")}`,
-    },
+  function drawRumbo() {
+    $("#rumbo").innerHTML = RUMBO.map((r, i) => `
+      <button type="button" class="rumbo-tile ${i === rumboPaso ? "on" : i < rumboPaso ? "past" : ""}" data-paso="${i}">
+        <span class="n">${i + 1}</span><span class="t">${r[0]}</span>
+      </button>`).join("");
+    $("#rumboTxt").textContent = `${RUMBO[rumboPaso][0]}: ${RUMBO[rumboPaso][1]}`;
+  }
+
+  const QUIEN = [
+    ["Estoy internado", "Ve tu ruta, medicinas y avisos.", "Entrar con mi ID", () => goApp("ruta")],
+    ["Tengo citas", "Ve cuándo, dónde y con quién.", "Ver mis citas", () => goApp("citas")],
+    ["Soy familiar", "Entra con el ID de tu familiar.", "Entrar con su ID", () => goLogin("paciente", "#/app/inicio")],
+    ["Soy personal de apoyo", "Manda avisos y revisa expedientes.", "Entrar al panel", () => goLogin("personal", "#/personal")],
   ];
+  function drawQuien() {
+    $("#quien").innerHTML = QUIEN.map((q, i) => `
+      <div class="q-item">
+        <button type="button" class="q-head" data-q="${i}" aria-expanded="${quienOpen === i}">
+          <span class="q-shape s${i}"></span><span>${q[0]}</span><span class="arrow">${quienOpen === i ? "−" : "+"}</span>
+        </button>
+        ${quienOpen === i ? `<div class="q-body"><span>${q[1]}</span><button type="button" class="pill-slate" data-cta="${i}">${q[2]}</button></div>` : ""}
+      </div>`).join("");
+  }
 
-  // Banda de avisos del hospital: la llena recepción desde su panel
   async function renderTicker() {
     const list = await Store.avisos().catch(() => []);
-    const band = $("#avisosBand");
-    band.hidden = !list.length;
+    $("#avisosBand").hidden = !list.length;
     if (!list.length) return;
-    const strip = list.map((a) => `<span class="mq-item">${esc(a.texto)}</span><span class="mq-star" aria-hidden="true">✶</span>`).join("");
+    const strip = list.map((a) => `<span>${esc(a.texto)}</span><span aria-hidden="true">✦</span>`).join("");
     $("#marqueeTrack").innerHTML = strip + strip;
-    $("#marqueeTrack").style.animationDuration = Math.max(24, list.length * 9) + "s";
+    $("#marqueeTrack").style.animationDuration = Math.max(18, list.length * 7) + "s";
   }
 
   function buildHome() {
-    renderTicker();
-
-    $("#carousel").innerHTML = SCENES.map((s, i) => `
-      <article class="slide bg-${COLORS[i % COLORS.length]}" style="--tilt:${i % 2 ? 1.2 : -1.2}deg">
-        <div class="scene"><svg viewBox="0 0 300 200" aria-hidden="true">${s.svg}</svg></div>
-        <span class="kicker">Paso ${i + 1} de ${SCENES.length}</span>
-        <h3 class="slide-title">${esc(s.title)}</h3>
-        <p class="slide-line">${esc(s.line)}</p>
-      </article>`).join("");
-    $("#carDots").innerHTML = SCENES.map((_, i) => `<button class="dot" data-i="${i}" aria-label="Ir al paso ${i + 1}"></button>`).join("");
-
-    const car = $("#carousel");
-    const step = () => { const s = car.querySelector(".slide"); return s ? s.getBoundingClientRect().width + 20 : 300; };
-    $("#carPrev").onclick = () => car.scrollBy({ left: -step(), behavior: "smooth" });
-    $("#carNext").onclick = () => {
-      const end = car.scrollLeft + car.clientWidth >= car.scrollWidth - 8;
-      end ? car.scrollTo({ left: 0, behavior: "smooth" }) : car.scrollBy({ left: step(), behavior: "smooth" });
-    };
-    $("#carDots").onclick = (e) => { const d = e.target.closest(".dot"); if (d) car.scrollTo({ left: step() * +d.dataset.i, behavior: "smooth" }); };
-    car.addEventListener("scroll", () => {
-      const i = Math.round(car.scrollLeft / step());
-      $$(".dot", $("#carDots")).forEach((d, j) => d.classList.toggle("on", i === j));
-    }, { passive: true });
-    $$(".dot", $("#carDots"))[0].classList.add("on");
-
-    // arrastrar con el mouse
-    let down = false, sx = 0, sl = 0, moved = false;
-    car.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") return; down = true; moved = false; sx = e.clientX; sl = car.scrollLeft; car.classList.add("dragging"); });
-    window.addEventListener("pointermove", (e) => { if (!down) return; const dx = e.clientX - sx; if (Math.abs(dx) > 5) moved = true; car.scrollLeft = sl - dx; });
-    window.addEventListener("pointerup", () => { down = false; car.classList.remove("dragging"); });
-    car.addEventListener("click", (e) => { if (moved) { e.preventDefault(); moved = false; } });
-
-    // avance automático (se detiene al interactuar)
-    let auto = setInterval(() => { if (document.visibilityState === "visible" && currentView === "home") $("#carNext").click(); }, 5000);
-    ["pointerdown", "wheel", "keydown", "focusin"].forEach((ev) => car.addEventListener(ev, () => { clearInterval(auto); }, { passive: true }));
-
-    // desplegables
-    const FOLDS = [
-      { t: "Estoy internado", go: ["ruta", "expediente", "medicinas", "chat"] },
-      { t: "Tengo citas", go: ["citas", "medicinas", "expediente", "avisos"] },
-      { t: "Soy familiar", go: ["ruta", "expediente", "citas", "avisos"] },
-      { t: "Soy personal de apoyo", go: ["personal"] },
-    ];
-    const label = { ruta: "Mi ruta", medicinas: "Medicinas", chat: "Chat", citas: "Citas", expediente: "Expediente", avisos: "Mis avisos", personal: "Entrar al panel de apoyo" };
-    $("#folds").innerHTML = FOLDS.map((f, i) => `
-      <div class="fold bg-${COLORS[(i + 1) % COLORS.length]}">
-        <button class="fold-btn" aria-expanded="false" aria-controls="fold${i}">
-          <span>${f.t}</span><span class="fold-plus" aria-hidden="true">+</span>
-        </button>
-        <div class="fold-body" id="fold${i}" hidden>
-          ${f.go.map((g) => `<button class="pill" data-go="${g}">${icon(g === "personal" ? "equipo" : g)}${label[g]}</button>`).join("")}
-        </div>
-      </div>`).join("");
-    $("#folds").addEventListener("click", (e) => {
-      const b = e.target.closest(".fold-btn");
-      if (b) {
-        const open = b.getAttribute("aria-expanded") === "true";
-        b.setAttribute("aria-expanded", !open);
-        b.nextElementSibling.hidden = open;
-        b.parentElement.classList.toggle("open", !open);
-        return;
-      }
-      const p = e.target.closest(".pill");
-      if (p) p.dataset.go === "personal" ? goLogin("personal", "#/personal") : goApp(p.dataset.go);
+    drawRumbo();
+    drawQuien();
+    rumboTimer = setInterval(() => { if (currentView === "home") { rumboPaso = (rumboPaso + 1) % 4; drawRumbo(); } }, 2800);
+    $("#rumbo").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-paso]"); if (!b) return;
+      clearInterval(rumboTimer); rumboPaso = +b.dataset.paso; drawRumbo();
+    });
+    $("#quien").addEventListener("click", (e) => {
+      const h = e.target.closest("[data-q]");
+      if (h) { quienOpen = quienOpen === +h.dataset.q ? -1 : +h.dataset.q; drawQuien(); return; }
+      const c = e.target.closest("[data-cta]");
+      if (c) QUIEN[+c.dataset.cta][3]();
     });
   }
 
@@ -229,15 +151,28 @@
   function show(view) {
     currentView = view;
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
-    $$(".nav-link").forEach((a) => a.classList.toggle("active", a.dataset.nav === view || (a.dataset.nav === "ingresar" && (view === "app" || view === "personal"))));
+    const role = Store.state.role;
+    $("#topbar").hidden = view === "app" || view === "personal" || (view === "asistente" && role === "paciente");
+    $("#bottomNav").hidden = !(role === "paciente" && (view === "app" || view === "asistente"));
+    $$(".lupi-pill").forEach((a) => a.classList.toggle("active", view === "asistente"));
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
+  function setBottom(tab) {
+    $$("#bottomNav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === tab));
+  }
+
   function route() {
+    closeSheet();
     const parts = location.hash.replace(/^#\/?/, "").split("/");
     const s = Store.state;
     switch (parts[0]) {
-      case "asistente": show("asistente"); break;
+      case "asistente":
+        show("asistente");
+        $("#lupiBack").href = s.role === "paciente" ? "#/app/inicio" : s.role === "personal" ? "#/personal" : "#/";
+        $("#lupiBack").textContent = s.role ? "← Inicio" : "← Volver";
+        setBottom("asistente");
+        break;
       case "ingresar":
         if (s.role === "paciente") { location.replace("#/app/inicio"); return; }
         if (s.role === "personal") { location.replace("#/personal"); return; }
@@ -261,7 +196,6 @@
     else { a.textContent = "Ingresar"; a.href = "#/ingresar"; }
   }
 
-  // Un solo aviso en vivo para toda la app
   function ensureLive() {
     if (unsub || !Store.state.role) return;
     unsub = Store.subscribe(() => {
@@ -306,7 +240,7 @@
       } catch (ex) {
         $("#loginError").textContent = ex.message || "No se pudo entrar.";
       } finally {
-        btn.disabled = false; btn.textContent = "Entrar";
+        btn.disabled = false; btn.textContent = "Entrar →";
       }
     });
     setRole("paciente");
@@ -315,208 +249,246 @@
   async function doLogout() {
     if (unsub) { unsub(); unsub = null; }
     await Store.logout();
-    staffSel = null;
+    staffView = null;
     location.hash = "#/";
-    toast("Sesión cerrada");
+  }
+
+  /* =========================================================
+     DATOS CALCULADOS
+     ========================================================= */
+  function sortedSteps(p) {
+    const items = p.procedimientos.slice().sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    let cur = items.findIndex((x) => x.estado === "hoy");
+    if (cur < 0) cur = items.findIndex((x) => x.estado === "pendiente");
+    if (cur < 0) cur = items.length;
+    return { items, cur };
+  }
+
+  function activeMed(m, day) {
+    const d0 = m.desde ? new Date(m.desde + "T00:00:00") : null;
+    const d1 = m.hasta ? new Date(m.hasta + "T23:59:00") : null;
+    return (!d0 || day >= d0) && (!d1 || day <= d1);
+  }
+  // tomas de hoy: listas (ya pasó la hora) y por tomar
+  function dosesToday(p) {
+    const now = new Date(); let done = 0, left = 0;
+    p.medicamentos.forEach((m) => (m.horarios || []).forEach((h) => {
+      if (!/^\d{1,2}:\d{2}$/.test(h)) return;
+      const [hh, mm] = h.split(":").map(Number);
+      const t = new Date(); t.setHours(hh, mm, 0, 0);
+      if (!activeMed(m, t)) return;
+      t <= now ? done++ : left++;
+    }));
+    return { done, left };
+  }
+  function nextDose(p) {
+    const now = new Date(); let best = null;
+    for (let d = 0; d < 2; d++) p.medicamentos.forEach((m) => (m.horarios || []).forEach((h) => {
+      if (!/^\d{1,2}:\d{2}$/.test(h)) return;
+      const [hh, mm] = h.split(":").map(Number);
+      const t = new Date(); t.setDate(t.getDate() + d); t.setHours(hh, mm, 0, 0);
+      if (t > now && activeMed(m, t) && (!best || t < best.t)) best = { t, m };
+    }));
+    return best;
+  }
+  // "Lo que sigue": el siguiente evento (paso de la ruta, cita o medicina)
+  function nextThing(p) {
+    const now = new Date(); const c = [];
+    p.procedimientos.forEach((x) => { if (x.estado !== "hecho" && new Date(x.fecha) > now) c.push({ t: new Date(x.fecha), titulo: x.titulo, lugar: x.lugar, go: "ruta" }); });
+    p.citas.forEach((x) => { if (new Date(x.inicio) > now) c.push({ t: new Date(x.inicio), titulo: x.titulo, lugar: x.lugar, go: "citas" }); });
+    const d = nextDose(p); if (d) c.push({ t: d.t, titulo: d.m.nombre + " · " + d.m.dosis, lugar: d.m.via, go: "medicinas" });
+    return c.sort((a, b) => a.t - b.t)[0] || null;
   }
 
   /* =========================================================
      APP DEL PACIENTE
      ========================================================= */
-  const TABS = [
-    ["inicio", "Inicio"], ["ruta", "Mi ruta"], ["expediente", "Expediente"], ["medicinas", "Medicinas"],
-    ["citas", "Citas"], ["avisos", "Mis avisos"], ["chat", "Chat"],
-  ];
+  const SECTIONS = ["inicio", "ruta", "expediente", "medicinas", "citas", "avisos", "chat"];
+  let msgs = [];
+  let avisoFiltro = "Todos";
+  let justRead = new Set();
+  let medOpen = 0;
   let salaRoom = "juegos";
-  let unreadCount = 0;
+
+  const backHead = (title, seed, right) => `
+    <div class="row-between"><a href="#/app/inicio" class="btn-back">← Inicio</a>${right || ""}</div>
+    ${cutTitle(title, 32, seed)}`;
 
   async function renderApp(sec) {
     const p = Store.state.me;
     if (sec === "hoy") sec = "inicio";
-    if (!TABS.some((t) => t[0] === sec)) sec = "inicio";
-    $("#appHello").innerHTML = "";
-    const hello = document.createElement("span");
-    hello.dataset.cut = `hola ${(p.apodo || p.nombre.split(" ")[0]).toLowerCase()}`;
-    hello.dataset.seed = "5";
-    $("#appHello").appendChild(hello);
-    Cutout.cut(hello);
-    $("#appSub").textContent = [p.hospital, p.cuarto ? "Cuarto " + p.cuarto : p.area, p.codigo].filter(Boolean).join(" · ");
-    $("#modeBadge").hidden = Store.state.mode !== "demo";
-
-    const msgs = await Store.messages(p).catch(() => []);
-    unreadCount = msgs.filter((m) => !m.leido).length;
-
-    $("#appTabs").innerHTML = TABS.map(([k, t]) => `
-      <a href="#/app/${k}" class="tab ${k === sec ? "on" : ""}">${icon(k)}<span>${t}</span>${k === "avisos" && unreadCount ? `<b class="count">${unreadCount}</b>` : ""}</a>`).join("");
-    const on = $(".tab.on", $("#appTabs")); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });
-
-    const body = $("#appBody");
+    if (!SECTIONS.includes(sec)) sec = "inicio";
+    setBottom(["inicio", "ruta", "expediente"].includes(sec) ? sec : "");
+    msgs = await Store.messages(p).catch(() => []);
+    // contenedor nuevo en cada pantalla, para no acumular listeners
+    const old = $("#appBody"); const body = old.cloneNode(false); old.replaceWith(body);
     body.dataset.sec = sec;
-    ({ inicio: secInicio, ruta: secRuta, expediente: secExpediente, medicinas: secMeds, citas: secCitas, avisos: secAvisos, chat: secChat })[sec](body, p, msgs);
+    ({ inicio: secInicio, ruta: secRuta, expediente: secExpediente, medicinas: secMeds, citas: secCitas, avisos: secAvisos, chat: secChat })[sec](body, p);
+    Cutout.cutAll(body);
     ensureLive();
   }
 
   function refreshPatientLive() {
     const sec = $("#appBody").dataset.sec;
-    if (sec === "chat") loadSala();
+    if (sec === "chat") loadSala($("#chatWall"));
     else if (sec === "avisos" || sec === "inicio") renderApp(sec);
   }
 
-  /* ---- próxima toma de medicina ---- */
-  function nextDoses(p, limit) {
-    const now = new Date(); const out = [];
-    for (let d = 0; d < 2; d++) {
-      p.medicamentos.forEach((m) => {
-        (m.horarios || []).forEach((h) => {
-          if (!/^\d{1,2}:\d{2}$/.test(h)) return;
-          const [hh, mm] = h.split(":").map(Number);
-          const t = new Date(); t.setDate(t.getDate() + d); t.setHours(hh, mm, 0, 0);
-          const hasta = m.hasta ? new Date(m.hasta + "T23:59:00") : null;
-          if (t > now && (!hasta || t <= hasta)) out.push({ m, t });
-        });
-      });
-    }
-    return out.sort((a, b) => a.t - b.t).slice(0, limit || 3);
-  }
-
-  /* ---- Inicio: dos botones grandes y cuatro medianos ---- */
-  function secInicio(body, p, msgs) {
-    const dose = nextDoses(p, 1)[0];
+  /* ---- Inicio (variante 1a · Clásico claro) ---- */
+  function secInicio(body, p) {
+    const unread = msgs.filter((m) => !m.leido);
+    const urg = unread.filter((m) => m.tipo === "urgente").sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+    const nx = nextThing(p);
+    const { items, cur } = sortedSteps(p);
+    const doses = dosesToday(p);
     const cita = p.citas.filter((c) => new Date(c.inicio) > new Date()).sort((a, b) => new Date(a.inicio) - new Date(b.inicio))[0];
-    const urgente = msgs.filter((m) => m.tipo === "urgente" && !m.leido).sort((x, y) => new Date(y.created_at) - new Date(x.created_at))[0];
+    const nombre = p.apodo || p.nombre.split(" ")[0];
 
     body.innerHTML = `
-      ${urgente ? `<a href="#/app/avisos" class="alert-urgent">${icon("avisos")}<span><strong>Aviso urgente:</strong> ${esc(urgente.texto)}</span></a>` : ""}
-      <div class="big-actions">
-        <a href="#/app/expediente" class="big-btn bg-slate">
-          <span class="big-ico">${icon("expediente")}</span>
-          <span class="big-label">Mi expediente</span>
-          <span class="big-sub">Tus datos y tus documentos</span>
-        </a>
-        <a href="#/app/ruta" class="big-btn bg-frosted">
-          <span class="big-ico">${icon("ruta")}</span>
-          <span class="big-label">Mi ruta</span>
-          <span class="big-sub">Por dónde vas en tu tratamiento</span>
-        </a>
+      <div class="hello-row">
+        <div>
+          ${cutTitle(`¡Hola, ${nombre}!`, 30, 2)}
+          <p class="hello-sub">${esc([p.cuarto ? "Cuarto " + p.cuarto : p.area, p.hospital].filter(Boolean).join(" · "))}</p>
+        </div>
+        <div class="hello-tools">
+          ${Store.state.mode === "demo" ? `<span class="demo-badge">modo demo</span>` : ""}
+          <button type="button" class="btn-soft btn-sm" id="logoutBtn">Salir</button>
+        </div>
       </div>
-      <div class="mid-actions">
-        <a href="#/app/medicinas" class="mid-btn">${icon("medicinas")}<span class="mid-label">Medicinas</span><span class="mid-sub">${dose ? "Próxima: " + fHora(dose.t) : "Sin tomas pendientes"}</span></a>
-        <a href="#/app/citas" class="mid-btn">${icon("citas")}<span class="mid-label">Citas</span><span class="mid-sub">${cita ? "Próxima: " + cuando(cita.inicio) : "Sin citas"}</span></a>
-        <a href="#/app/avisos" class="mid-btn">${icon("avisos")}<span class="mid-label">Mis avisos</span><span class="mid-sub">${unreadCount ? unreadCount + (unreadCount === 1 ? " nuevo" : " nuevos") : "Todo leído"}</span></a>
-        <a href="#/app/chat" class="mid-btn">${icon("chat")}<span class="mid-label">Chat</span><span class="mid-sub">Platica con otros pacientes</span></a>
+      ${urg ? `<a href="#/app/avisos" class="urgent-banner"><span class="dot-bang">!</span><span>${esc(urg.texto)}</span></a>` : ""}
+      ${nx ? `
+        <a href="#/app/${nx.go}" class="card-strong next-card">
+          <span class="next-k"><span class="dot-pulse"></span>Lo que sigue · ${falta(nx.t)}</span>
+          <span class="next-t">${fHora(nx.t)} · ${esc(nx.titulo)}</span>
+          ${nx.lugar ? `<span class="next-p">${esc(nx.lugar)}</span>` : ""}
+        </a>` : ""}
+      <div class="grid-2">
+        <a href="#/app/expediente" class="big-tile t-exp"><span class="i-folder"></span><span class="lbl-big">Mi expediente</span></a>
+        <a href="#/app/ruta" class="big-tile t-ruta"><span class="i-steps"><i></i><i></i><i></i></span>
+          <span><span class="lbl-big">Mi ruta</span><span class="lbl-sm">${cur >= items.length ? "¡Todo listo!" : `Paso ${cur + 1} de ${items.length}`}</span></span></a>
+      </div>
+      <div class="grid-2">
+        <a href="#/app/medicinas" class="mini-tile"><span class="i-pill"></span><span class="mini-row"><span>Medicinas</span><small>${doses.left ? doses.left + " hoy" : ""}</small></span></a>
+        <a href="#/app/citas" class="mini-tile"><span class="i-cal"></span><span class="mini-row"><span>Citas</span><small>${cita ? (dayDiff(cita.inicio) === 0 ? fHora(cita.inicio) : cuando(cita.inicio)) : ""}</small></span></a>
+        <a href="#/app/avisos" class="mini-tile"><span class="i-bell"></span><span class="mini-row"><span>Mis avisos</span></span>${unread.length ? `<span class="badge-n">${unread.length}</span>` : ""}</a>
+        <a href="#/app/chat" class="mini-tile"><span class="i-chat"></span><span class="mini-row"><span>Chat</span></span></a>
       </div>`;
+    $("#logoutBtn").onclick = doLogout;
   }
 
-  /* ---- Mi ruta: un camino con paradas hasta el alta ---- */
-  function routeHTML(p, interactive) {
-    const items = p.procedimientos.slice().sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-    let cur = items.findIndex((x) => x.estado === "hoy");
-    if (cur < 0) cur = items.findIndex((x) => x.estado === "pendiente");
-    if (cur < 0) cur = items.length; // todo listo
+  /* ---- Mi ruta (variante 1d · Receta que se completa) ---- */
+  function rutaHTML(p, interactive) {
+    const { items, cur } = sortedSteps(p);
     const finished = cur >= items.length;
-    const ST = { hecho: "Listo", aqui: "En proceso", pendiente: "Por hacer" };
-    const goal = p.tipo === "internado" ? "¡Alta médica!" : "¡Tratamiento terminado!";
-
-    const steps = items.map((x, i) => {
-      const st = i < cur ? "hecho" : i === cur ? "aqui" : "pendiente";
-      const tag = interactive ? `button type="button" data-stop="${i}"` : "div";
-      return `
-        <li class="step ${st}">
-          <span class="step-num" aria-hidden="true">${st === "hecho" ? "✓" : i + 1}</span>
-          <${tag} class="step-card">
-            <span class="step-top"><strong class="step-title">${esc(x.titulo)}</strong><span class="step-chip">${ST[st]}</span></span>
-            <span class="step-meta">${fFecha(x.fecha)} · ${fHora(x.fecha)}${x.lugar ? " · " + esc(x.lugar) : ""}</span>
-          </${interactive ? "button" : "div"}>
-        </li>`;
-    }).join("");
-
-    return `
-      <div class="bake">
-        <ol class="recipe">
-          ${steps}
-          <li class="step meta ${finished ? "aqui" : ""}">
-            <span class="step-num" aria-hidden="true">★</span>
-            <div class="step-card"><span class="step-top"><strong class="step-title">${goal}</strong></span>
-              <span class="step-meta">Tu meta final</span></div>
-          </li>
-        </ol>
-      </div>`;
+    const last = cur > 0 ? items[cur - 1] : null;
+    const goal = p.tipo === "internado" ? "Meta: ¡Alta médica!" : "Meta: ¡Tratamiento terminado!";
+    const tag = (i) => (interactive ? `button type="button" data-step="${i}"` : "div");
+    const close = interactive ? "button" : "div";
+    return `<div class="ruta-wrap">
+      ${last ? `<div class="r-new"><span class="sq">✓</span><span class="col"><span class="k">${finished ? "¡Completaste todo!" : "¡Último paso listo!"}</span><span class="t">${esc(last.titulo)}</span></span>
+        <span class="confetti c1"></span><span class="confetti c2"></span><span class="confetti c3"></span></div>` : ""}
+      <div class="ruta-list">
+        ${items.map((x, i) => {
+          if (i < cur) return `<${tag(i)} class="r-row"><span class="r-num">✓</span><span class="t">${esc(x.titulo)}</span><span class="s">Listo</span></${close}>`;
+          if (i === cur) return `
+            <div class="r-now">
+              <div class="r-head"><span class="r-ring"><span class="dot-pulse"></span></span><span class="t">${esc(x.titulo)}</span><span class="s">En proceso</span></div>
+              <span class="meta">${cuando(x.fecha).replace(/^./, (c) => c.toUpperCase())} ${fHora(x.fecha)}${x.lugar ? " · " + esc(x.lugar) : ""}</span>
+              ${x.descripcion ? `<span class="desc">${esc(x.descripcion)}</span>` : ""}
+              <div class="lupi-box">${face(30)}<span class="col" id="lupiNow"><span>¿Quieres saber qué es?</span><button type="button" class="pill-slate" data-explain="${esc(x.titulo)}">Pregúntale a Lupi</button></span></div>
+            </div>`;
+          return `<${tag(i)} class="r-row next"><span class="r-num">${i + 1}</span><span class="t">${esc(x.titulo)}</span></${close}>`;
+        }).join("")}
+        <div class="r-goal ${finished ? "done" : ""}">${goal}</div>
+      </div>
+      <div id="stepDetail"></div></div>`;
   }
-  function secRuta(body, p) {
-    body.innerHTML = `
-      <div class="sec-head"><h2 class="mag-h">Mi ruta</h2></div>
-      <div class="legend"><span><i class="lg hecho"></i>Listo</span><span><i class="lg aqui"></i>En proceso</span><span><i class="lg pendiente"></i>Por hacer</span></div>
-      ${routeHTML(p, true)}
-      <div class="stop-detail" id="stopDetail" hidden></div>`;
-    const items = p.procedimientos.slice().sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-    body.querySelector(".recipe").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-stop]"); if (!b) return;
-      const x = items[+b.dataset.stop];
-      const d = $("#stopDetail");
-      d.hidden = false;
-      d.innerHTML = `
-        <button type="button" class="close-x" aria-label="Cerrar">×</button>
-        <p class="kicker">${fFecha(x.fecha)} · ${fHora(x.fecha)}</p>
-        <h3>${esc(x.titulo)}</h3>
-        <p>${esc(x.descripcion)}</p>
-        <p class="small">📍 ${esc(x.lugar)}${x.responsable ? " · " + esc(x.responsable) : ""}</p>
-        <button class="btn btn-frosted btn-small ask-lupi" data-q="${esc(x.titulo)}">¿Qué es esto? Pregúntale a Lupi</button>`;
-      d.querySelector(".close-x").onclick = () => (d.hidden = true);
-      d.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  function bindRuta(root, p) {
+    const { items } = sortedSteps(p);
+    root.addEventListener("click", async (e) => {
+      const ex = e.target.closest("[data-explain]");
+      if (ex) {
+        const box = $("#lupiNow", root);
+        box.innerHTML = `<p class="dots-loading"><span></span><span></span><span></span></p>`;
+        const txt = await Lupi.explain(ex.dataset.explain);
+        box.innerHTML = Lupi.fmt(txt);
+        return;
+      }
+      const st = e.target.closest("[data-step]");
+      if (st) {
+        const x = items[+st.dataset.step];
+        const d = $("#stepDetail", root);
+        d.innerHTML = `
+          <div class="r-detail">
+            <div class="row-between"><span class="t">${esc(x.titulo)}</span><button type="button" class="pill-light" data-x>Cerrar</button></div>
+            <span>${fFecha(x.fecha)} · ${fHora(x.fecha)}</span>
+            ${x.lugar ? `<span>📍 ${esc(x.lugar)}${x.responsable ? " · " + esc(x.responsable) : ""}</span>` : ""}
+            ${x.descripcion ? `<span>${esc(x.descripcion)}</span>` : ""}
+          </div>`;
+        $("[data-x]", d).onclick = () => (d.innerHTML = "");
+        d.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
     });
   }
 
-  function appBodyClicks(e) {
-    const q = e.target.closest(".ask-lupi");
-    if (q) { location.hash = "#/asistente"; setTimeout(() => Lupi.ask(q.dataset.q), 150); return; }
-    const ics = e.target.closest("[data-ics]");
-    if (ics) {
-      const p = Store.state.me;
-      Calendar.addCita(p.citas.find((c) => String(c.id) === ics.dataset.ics), p);
-      toast("Te avisaremos 1 día y 1 hora antes");
-    }
+  function secRuta(body, p) {
+    body.innerHTML = backHead("Mi ruta", 3) + rutaHTML(p, true);
+    bindRuta(body, p);
   }
 
-  /* ---- Expediente: datos generales + documentos para ver y descargar ---- */
+  /* ---- Expediente ---- */
   function expedienteHTML(p) {
+    const [cName, cPhone] = String(p.contacto_emergencia || "").split(" · ");
+    const tel = (cPhone || "").replace(/[^\d+]/g, "");
     return `
-      <div class="exp-grid">
-        <article class="id-card paper">
-          <span class="tape"></span>
-          <p class="card-k">ID único</p>
-          <p class="id-code">${esc(p.codigo)}</p>
-          <dl>
-            <dt>Nombre</dt><dd>${esc(p.nombre)}</dd>
-            <dt>Edad</dt><dd>${edad(p.fecha_nacimiento)}</dd>
-            <dt>Tipo de sangre</dt><dd>${esc(p.tipo_sangre || "—")}</dd>
-            <dt>Hospital</dt><dd>${esc(p.hospital)}</dd>
-            <dt>Contacto de emergencia</dt><dd>${esc(p.contacto_emergencia || "—")}</dd>
-          </dl>
-        </article>
-        <div class="exp-side">
-          <div class="card bg-slate"><p class="card-k">Alergias</p>${p.alergias.length ? p.alergias.map((a) => `<span class="tag big">${esc(a)}</span>`).join(" ") : "<p>Ninguna registrada</p>"}</div>
-          <div class="card bg-frosted"><p class="card-k">Diagnósticos</p>${p.diagnosticos.map((d) => `<p>${esc(d)}</p>`).join("") || "<p>—</p>"}</div>
-        </div>
+      <div class="exp-layout"><div class="exp-left">
+      <div class="card-strong">
+        <span class="small">Mi ID</span>
+        <div class="id-row"><span class="id-code">${esc(p.codigo)}</span><button type="button" class="pill-light" id="copyId">Copiar</button></div>
+        <span style="font-size:20px">${esc(p.nombre)}</span>
       </div>
-      <h3 class="sub">Documentos</h3>
-      <div class="docs">${p.documentos.length ? p.documentos.map((d) => `
-        <div class="doc-row">
-          <span class="doc-ico">${icon("expediente")}</span>
-          <div class="doc-info"><strong>${esc(d.titulo)}</strong><span class="small">${esc(d.tipo || "")} · ${fDia(d.fecha)}</span></div>
-          <div class="doc-actions">
-            <button class="btn btn-frosted btn-small" data-ver="${esc(d.id)}">${icon("ver")}Ver</button>
-            <button class="btn btn-ink btn-small" data-bajar="${esc(d.id)}">${icon("bajar")}Descargar</button>
-          </div>
-        </div>`).join("") : `<p class="muted">Aún no hay documentos.</p>`}</div>`;
+      <div class="info-grid">
+        <div class="info"><span class="k">Edad</span><span class="v">${edad(p.fecha_nacimiento)}</span></div>
+        <div class="info"><span class="k">Sangre</span><span class="v">${esc(p.tipo_sangre || "—")}</span></div>
+        <div class="info full"><span class="k">Hospital</span><span class="v md">${esc(p.hospital || "—")}</span></div>
+        ${p.contacto_emergencia ? `
+        <div class="info full call"><span><span class="k">Si pasa algo, llamar a</span><span class="v md">${esc(cName)}</span>${cPhone ? `<span class="small">${esc(cPhone)}</span>` : ""}</span>
+          ${tel ? `<a class="pill-slate" href="tel:${esc(tel)}">Llamar</a>` : ""}</div>` : ""}
+      </div>
+      </div><div class="exp-right">
+      <div class="block"><h2 class="h-sub">Alergias</h2>
+        <div class="chips-row">${p.alergias.length ? p.alergias.map((a) => `<span class="tag tag-urgente"><span class="dot-bang">!</span>${esc(a)}</span>`).join("") : `<span class="note-dashed">Ninguna registrada</span>`}</div></div>
+      <div class="block"><h2 class="h-sub">Diagnóstico</h2>
+        ${p.diagnosticos.length ? p.diagnosticos.map((d) => `<div class="diag"><span>${esc(d)}</span><button type="button" class="pill-frost" data-quees="${esc(d)}">¿Qué es?</button></div>`).join("") : `<span class="note-dashed">Sin diagnósticos</span>`}</div>
+      <div class="block"><h2 class="h-sub">Documentos</h2>
+        ${p.documentos.length ? p.documentos.map((d) => `
+          <div class="doc"><span class="doc-top"><span>${esc(d.titulo)}</span><small>${fCorta(d.fecha)}</small></span>
+            <div class="grid-2"><button type="button" class="doc-btn" data-ver="${esc(d.id)}">Ver</button><button type="button" class="doc-btn fill" data-bajar="${esc(d.id)}">Descargar</button></div></div>`).join("")
+          : `<span class="note-dashed">Aún no hay documentos.</span>`}</div>
+      </div></div>`;
   }
 
-  function bindDocs(root, p) {
-    root.addEventListener("click", (e) => {
-      const v = e.target.closest("[data-ver]");
-      const b = e.target.closest("[data-bajar]");
-      const d = (v || b) && p.documentos.find((x) => String(x.id) === (v || b).dataset[v ? "ver" : "bajar"]);
+  function bindExpediente(root, p) {
+    root.addEventListener("click", async (e) => {
+      if (e.target.closest("#copyId")) {
+        const b = e.target.closest("#copyId");
+        try { await navigator.clipboard.writeText(p.codigo); } catch (_) {}
+        b.textContent = "✓ Copiado"; setTimeout(() => (b.textContent = "Copiar"), 1800);
+        return;
+      }
+      const q = e.target.closest("[data-quees]");
+      if (q) {
+        openSheet(`<div class="sheet-top"><span class="sheet-step">Lupi te explica</span><button type="button" class="btn-soft btn-sm" data-close>Cerrar</button></div>
+          <h3>${esc(q.dataset.quees)}</h3><div class="lupi-box">${face(30)}<span class="col" id="sheetLupi"><p class="dots-loading"><span></span><span></span><span></span></p></span></div>`);
+        const txt = await Lupi.explain(q.dataset.quees);
+        const box = $("#sheetLupi"); if (box) box.innerHTML = Lupi.fmt(txt);
+        return;
+      }
+      const v = e.target.closest("[data-ver]"), b = e.target.closest("[data-bajar]");
+      const d = (v || b) && p.documentos.find((x) => String(x.id) === (v ? v.dataset.ver : b.dataset.bajar));
       if (!d) return;
-      if (v) verDoc(d, p); else bajarDoc(d, p);
+      v ? verDoc(d, p) : bajarDoc(d, p);
     });
   }
 
@@ -524,21 +496,20 @@
   // si no, se arma una hoja con los datos que hay.
   function docPage(d, p) {
     return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${esc(d.titulo)}</title>
-      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#222}h1{margin:0 0 4px}p.meta{color:#666;margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
+      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#59734C;background:#BED8CB}h1{margin:0 0 4px}p.meta{margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
       </head><body><h1>${esc(d.titulo)}</h1><p class="meta">${esc(d.tipo || "")} · ${fDia(d.fecha)}</p>
       <dl><dt>Paciente</dt><dd>${esc(p.nombre)}</dd><dt>ID</dt><dd>${esc(p.codigo)}</dd><dt>Hospital</dt><dd>${esc(p.hospital)}</dd></dl>
       <h2>Resumen</h2><p>${esc(d.resumen || "")}</p></body></html>`;
   }
   function verDoc(d, p) {
     if (d.url) { window.open(d.url, "_blank", "noopener"); return; }
-    const dlg = $("#docDialog");
-    $("#docDialogBody").innerHTML = `
-      <p class="kicker">${esc(d.tipo || "")} · ${fDia(d.fecha)}</p>
-      <h2 class="mag-h">${esc(d.titulo)}</h2>
+    openSheet(`
+      <div class="sheet-top"><span class="sheet-step">${esc(d.tipo || "Documento")} · ${fCorta(d.fecha)}</span><button type="button" class="btn-soft btn-sm" data-close>Cerrar</button></div>
+      <h3>${esc(d.titulo)}</h3>
       <p>${esc(d.resumen || "")}</p>
-      <p class="small muted">${esc(p.nombre)} · ${esc(p.codigo)} · ${esc(p.hospital)}</p>`;
-    $("#docDialogDownload").onclick = () => bajarDoc(d, p);
-    dlg.showModal();
+      <p class="small">${esc(p.nombre)} · ${esc(p.codigo)} · ${esc(p.hospital)}</p>
+      <button type="button" class="btn btn-primary" id="sheetDownload">Descargar</button>`,
+      (panel) => ($("#sheetDownload", panel).onclick = () => bajarDoc(d, p)));
   }
   function bajarDoc(d, p) {
     const a = document.createElement("a");
@@ -552,270 +523,361 @@
   }
 
   function secExpediente(body, p) {
-    body.innerHTML = `<div class="sec-head"><h2 class="mag-h">Mi expediente</h2></div>${expedienteHTML(p)}`;
-    bindDocs(body, p);
+    body.innerHTML = backHead("Expediente", 9) + expedienteHTML(p);
+    bindExpediente(body, p);
   }
 
-  /* ---- Medicinas: un botón grande por medicina ---- */
+  /* ---- Medicinas ---- */
   function secMeds(body, p) {
-    const dose = nextDoses(p, 1)[0];
+    const doses = dosesToday(p);
+    const now = new Date();
+    const slots = p.medicamentos.reduce((n, m) => n + (m.horarios || []).filter((h) => /^\d{1,2}:\d{2}$/.test(h)).length, 0);
     body.innerHTML = `
-      <div class="sec-head"><h2 class="mag-h">Mis medicinas</h2>
-        <button class="btn btn-ink" id="medsCal">${icon("citas")} Recordatorios en mi calendario</button></div>
-      ${dose ? `<div class="next-dose">${icon("medicinas")}<span>Tu próxima medicina es <strong>${esc(dose.m.nombre)}</strong> a las <strong>${fHora(dose.t)}</strong> (${cuando(dose.t)})</span></div>` : ""}
-      <div class="med-list">${p.medicamentos.map((m, i) => `
-        <div class="med-item bg-${COLORS[i % COLORS.length]}">
-          <button type="button" class="med-btn" aria-expanded="false">
-            <span class="med-ico">${icon("medicinas")}</span>
-            <span class="med-main"><span class="med-name">${esc(m.nombre)}</span><span class="med-why">${esc(m.para_que)}</span></span>
-            <span class="hours">${(m.horarios || []).map((h) => `<span class="hour">${esc(h)}</span>`).join("")}</span>
-            <span class="med-more" aria-hidden="true">+</span>
+      ${backHead("Medicinas", 4)}
+      <p style="font-size:17px">${doses.done + doses.left ? `Hoy: ${doses.done} ${doses.done === 1 ? "toma lista" : "tomas listas"}, ${doses.left} por tomar` : "Hoy no tienes tomas con horario."}</p>
+      <div class="med-grid">${p.medicamentos.map((m, i) => `
+        <div class="med ${i === medOpen ? "open" : ""}">
+          <button type="button" class="med-head" data-med="${i}" aria-expanded="${i === medOpen}">
+            <span class="i-pill lg"></span>
+            <span class="nm"><b>${esc(m.nombre)}</b><small>${esc(m.para_que)}</small></span>
+            <span class="arrow">${i === medOpen ? "−" : "+"}</span>
           </button>
-          <div class="med-detail" hidden>
-            <p><strong>Cuánto:</strong> ${esc(m.dosis)}</p>
-            <p><strong>Cómo:</strong> ${esc(m.via)}</p>
-            ${m.indicaciones ? `<p><strong>Ojo:</strong> ${esc(m.indicaciones)}</p>` : ""}
-            <p class="small">${m.desde ? "Del " + fDia(m.desde) : ""}${m.hasta ? " al " + fDia(m.hasta) : ""}</p>
-          </div>
-        </div>`).join("")}</div>`;
-    $("#medsCal").onclick = () => { Calendar.addMeds(p); toast("Abre el archivo para agregar los recordatorios"); };
-    body.querySelector(".med-list").addEventListener("click", (e) => {
-      const b = e.target.closest(".med-btn"); if (!b) return;
-      const open = b.getAttribute("aria-expanded") === "true";
-      b.setAttribute("aria-expanded", !open);
-      b.nextElementSibling.hidden = open;
-      b.parentElement.classList.toggle("open", !open);
-    });
+          <div class="med-times">${(m.horarios || []).map((h) => {
+            let done = false;
+            if (/^\d{1,2}:\d{2}$/.test(h)) { const [hh, mm] = h.split(":").map(Number); const t = new Date(); t.setHours(hh, mm, 0, 0); done = t <= now && activeMed(m, t); }
+            return `<span class="time ${done ? "done" : ""}">${done ? "✓ " : ""}${esc(h)}</span>`;
+          }).join("")}</div>
+          ${i === medOpen ? `<div class="med-detail"><span>Dosis</span><span>${esc(m.dosis)}</span><span>Cómo</span><span>${esc([m.via, m.indicaciones].filter(Boolean).join(". "))}</span>${m.hasta ? `<span>Hasta</span><span>${fDia(m.hasta)}</span>` : ""}</div>` : ""}
+        </div>`).join("")}</div>
+      <div class="sticky-cta">
+        <span class="ok" id="calOk" hidden>✓ ${slots} ${slots === 1 ? "recordatorio" : "recordatorios"} en tu calendario</span>
+        <button type="button" class="btn btn-primary btn-xl" id="medsCal">Recordármelo en el calendario</button>
+      </div>`;
+    body.onclick = (e) => {
+      const b = e.target.closest("[data-med]"); if (!b) return;
+      medOpen = medOpen === +b.dataset.med ? -1 : +b.dataset.med;
+      secMeds(body, p); Cutout.cutAll(body);
+    };
+    $("#medsCal").onclick = (e) => { e.stopPropagation(); Calendar.addMeds(p); $("#calOk").hidden = false; };
   }
 
+  /* ---- Citas ---- */
   function secCitas(body, p) {
     const now = new Date();
     const prox = p.citas.filter((c) => new Date(c.inicio) >= now).sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
     const pas = p.citas.filter((c) => new Date(c.inicio) < now);
-    const TIPO = { consulta: "slate", cirugia: "honeydew", estudio: "frosted", terapia: "frosted" };
     const card = (c, past) => `
-      <article class="cita bg-${TIPO[c.tipo] || "honeydew"} ${past ? "past" : ""}">
-        <div class="cita-date"><span class="cd-day">${new Date(c.inicio).getDate()}</span><span class="cd-mon">${new Date(c.inicio).toLocaleDateString("es-MX", { month: "short" })}</span></div>
+      <div class="card cita ${past ? "past" : ""}">
+        <div class="cita-date"><b>${new Date(c.inicio).getDate()}</b><small>${new Date(c.inicio).toLocaleDateString("es-MX", { month: "short" })}</small></div>
         <div class="cita-info">
-          <p class="small"><span class="tag">${esc(c.tipo)}</span> ${past ? "" : cuando(c.inicio)}</p>
-          <h3>${esc(c.titulo)}</h3>
-          <p>${fHora(c.inicio)} · ${esc(c.lugar)}</p>
-          ${c.con_quien ? `<p class="small">Con ${esc(c.con_quien)}</p>` : ""}
-          ${c.indicaciones ? `<p class="small">📝 ${esc(c.indicaciones)}</p>` : ""}
-          ${past ? "" : `<div class="cita-actions"><button class="btn btn-ink btn-small" data-ics="${c.id}">Agregar a mi calendario</button><a class="btn btn-small btn-ghost" target="_blank" rel="noopener" href="${Calendar.googleLink(c, p)}">Google Calendar</a></div>`}
+          <span class="small">${past ? fFecha(c.inicio) : cuando(c.inicio).replace(/^./, (x) => x.toUpperCase())} · ${fHora(c.inicio)}</span>
+          <span class="t">${esc(c.titulo)}</span>
+          <span>${esc(c.lugar)}</span>
+          ${c.con_quien ? `<span>Con ${esc(c.con_quien)}</span>` : ""}
+          ${c.indicaciones ? `<span>📝 ${esc(c.indicaciones)}</span>` : ""}
+          ${past ? "" : `<div class="cita-actions"><button type="button" class="pill-slate" data-ics="${esc(c.id)}">Agregar a mi calendario</button><a class="btn-soft btn-sm" target="_blank" rel="noopener" href="${Calendar.googleLink(c, p)}">Google Calendar</a></div>`}
         </div>
-      </article>`;
+      </div>`;
     body.innerHTML = `
-      <div class="sec-head"><h2 class="mag-h">Mis citas</h2>
-        ${prox.length ? `<button class="btn btn-ink" id="allCal">Agregar todas (con recordatorios)</button>` : ""}</div>
-      <div class="citas">${prox.length ? prox.map((c) => card(c)).join("") : `<p class="muted">No tienes citas próximas.</p>`}</div>
-      ${pas.length ? `<details class="past-box"><summary>Citas pasadas (${pas.length})</summary><div class="citas">${pas.map((c) => card(c, true)).join("")}</div></details>` : ""}`;
+      ${backHead("Citas", 6)}
+      ${prox.length ? `<div class="cita-grid">${prox.map((c) => card(c)).join("")}</div>` : `<div class="empty">No tienes citas próximas.</div>`}
+      ${prox.length > 1 ? `<button type="button" class="btn btn-secondary" id="allCal">Agregar todas con recordatorios</button>` : ""}
+      ${pas.length ? `<details class="past-box"><summary>Citas pasadas (${pas.length})</summary><div>${pas.map((c) => card(c, true)).join("")}</div></details>` : ""}`;
+    body.onclick = (e) => {
+      const b = e.target.closest("[data-ics]"); if (!b) return;
+      Calendar.addCita(p.citas.find((c) => String(c.id) === b.dataset.ics), p);
+      toast("Te avisaremos 1 día y 1 hora antes");
+    };
     const all = $("#allCal"); if (all) all.onclick = () => { Calendar.addAllCitas(p); toast("Abre el archivo para guardar tus citas"); };
   }
 
-  /* ---- Mis avisos: mensajes y recordatorios de recepción ---- */
-  const TIPO_AVISO = { urgente: ["Urgente", "slate"], recordatorio: ["Recordatorio", "frosted"], mensaje: ["Mensaje", "honeydew"] };
-  function avisoHTML(m, forStaff) {
-    const [lbl, col] = TIPO_AVISO[m.tipo] || TIPO_AVISO.mensaje;
-    return `
-      <article class="aviso bg-${col} ${m.leido ? "leido" : ""}">
-        <div class="aviso-top"><span class="tag">${lbl}</span><span class="small">${fFecha(m.created_at)} · ${fHora(m.created_at)}</span></div>
-        <p class="aviso-text">${esc(m.texto)}</p>
-        <div class="aviso-foot">
-          <span class="small">De: ${esc(m.autor_nombre)}</span>
-          ${forStaff ? `<span class="small">${m.leido ? "✓ Leído" : "Sin leer"}</span>`
-            : m.leido ? `<span class="small">✓ Leído</span>` : `<button class="btn btn-ink btn-small" data-leido="${esc(m.id)}">¡Entendido!</button>`}
-        </div>
-      </article>`;
-  }
-
-  function secAvisos(body, p, msgs) {
-    const list = msgs.slice().sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+  /* ---- Mis avisos ---- */
+  const TIPO_LBL = { urgente: "Urgente", recordatorio: "Recordatorio", mensaje: "Mensaje" };
+  function secAvisos(body, p) {
+    const unreadN = msgs.filter((m) => !m.leido).length;
+    const list = msgs.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .filter((m) => avisoFiltro === "Todos" || TIPO_LBL[m.tipo || "mensaje"] === avisoFiltro);
+    const unread = list.filter((m) => !m.leido), read = list.filter((m) => m.leido);
     body.innerHTML = `
-      <div class="sec-head"><h2 class="mag-h">Mis avisos</h2></div>
-      <p class="muted">Aquí te escribe recepción: recordatorios, permisos de visita y avisos importantes.</p>
-      <div class="avisos-list">${list.length ? list.map((m) => avisoHTML(m)).join("") : `<p class="muted">No tienes avisos.</p>`}</div>`;
-    body.querySelector(".avisos-list").addEventListener("click", async (e) => {
+      ${backHead("Mis avisos", 6, `<span style="font-size:16px">${unreadN ? unreadN + (unreadN === 1 ? " nuevo" : " nuevos") : "Todo leído"}</span>`)}
+      <div class="filters">${["Todos", "Urgente", "Recordatorio", "Mensaje"].map((f) => `<button type="button" class="filter ${f === avisoFiltro ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
+      ${msgs.length && unreadN === 0 && avisoFiltro === "Todos" ? `<div class="all-done">${face(72)}<b>¡Todo al día!</b><span style="font-size:16px">Si llega algo nuevo, aparece aquí.</span></div>` : ""}
+      ${!list.length ? `<div class="empty">Nada por aquí. ¡Qué tranquilidad!</div>` : ""}
+      ${unread.map((m) => `
+        <div class="aviso ${m.tipo || "mensaje"}">
+          <div class="aviso-top"><span class="aviso-tag">${TIPO_LBL[m.tipo || "mensaje"]}</span><span>${dayDiff(m.created_at) === 0 ? fHora(m.created_at) : fFecha(m.created_at)}</span></div>
+          <span class="aviso-txt">${esc(m.texto)}</span>
+          <span class="aviso-from">De: ${esc(m.autor_nombre)}</span>
+          <button type="button" class="aviso-ok" data-leido="${esc(m.id)}">¡Entendido!</button>
+        </div>`).join("")}
+      ${read.map((m) => `
+        <div class="aviso-read"><span class="dot-check">✓</span><span class="t">${esc(m.texto)}</span>${justRead.has(m.id) ? `<span class="thanks">¡Gracias!</span>` : ""}</div>`).join("")}`;
+    body.onclick = async (e) => {
+      const f = e.target.closest("[data-f]");
+      if (f) { avisoFiltro = f.dataset.f; secAvisos(body, p); Cutout.cutAll(body); return; }
       const b = e.target.closest("[data-leido]"); if (!b) return;
       b.disabled = true;
-      try { await Store.markRead(p, b.dataset.leido); renderApp("avisos"); } catch (ex) { toast("No se pudo guardar: " + ex.message); b.disabled = false; }
-    });
+      try { await Store.markRead(p, b.dataset.leido); justRead.add(b.dataset.leido); renderApp("avisos"); }
+      catch (ex) { toast("No se pudo guardar: " + ex.message); b.disabled = false; }
+    };
   }
 
   /* ---- Chat entre pacientes ---- */
-  const ROOMS = [["juegos", "Niñas y niños", "slate"], ["general", "Pacientes y familias", "frosted"]];
+  const ROOMS = [["juegos", "Niñas y niños"], ["general", "Pacientes y familias"]];
   const BLOCK = /(\d[\s-]?){7,}|@|https?:\/\/|www\.|\.com\b/i;
   const BAD = ["idiota", "estupido", "estúpido", "tonto", "pendejo", "imbecil", "imbécil"];
 
   function secChat(body) {
     body.innerHTML = `
-      <div class="sec-head"><h2 class="mag-h">Chat</h2>
-        <div class="filter">${ROOMS.map(([k, t, c]) => `<button class="pill bg-${c} ${k === salaRoom ? "on" : ""}" data-room="${k}">${t}</button>`).join("")}</div></div>
-      <div class="sala-box">
-        <div class="sala-wall" id="salaWall"></div>
-        <form class="composer" id="salaForm">
-          <input id="salaInput" maxlength="240" placeholder="Escribe algo bonito…" autocomplete="off" />
-          <button class="btn btn-ink" type="submit">Enviar</button>
-        </form>
-        <div class="stk-row">${Object.keys(STICKERS).map((k) => `<button type="button" class="stk-btn" data-stk="${k}" aria-label="Enviar sticker ${k}">${sticker(k)}</button>`).join("")}</div>
-        <p class="small center">Por tu seguridad no compartas teléfonos, direcciones ni redes sociales. Recepción cuida este chat.</p>
-      </div>`;
-    body.querySelector(".filter").onclick = (e) => { const b = e.target.closest("[data-room]"); if (b) { salaRoom = b.dataset.room; secChat(body); } };
-    $("#salaForm").addEventListener("submit", async (e) => {
+      ${backHead("Chat", 1)}
+      <div class="seg">${ROOMS.map(([k, t]) => `<button type="button" class="seg-btn ${k === salaRoom ? "on" : ""}" data-room="${k}">${t}</button>`).join("")}</div>
+      <div class="chat-wall" id="chatWall"></div>
+      <form class="composer" id="salaForm"><input id="salaInput" maxlength="240" placeholder="Escribe algo bonito…" autocomplete="off" /><button class="btn btn-primary" type="submit">Enviar</button></form>
+      <div class="stk-row">${Object.keys(STICKERS).map((k) => `<button type="button" class="stk-btn" data-stk="${k}" aria-label="Enviar sticker">${sticker(k)}</button>`).join("")}</div>
+      <p class="note-dashed">Por tu seguridad no compartas teléfonos, direcciones ni redes sociales. Recepción cuida este chat.</p>`;
+    body.onclick = async (e) => {
+      const r = e.target.closest("[data-room]");
+      if (r) { salaRoom = r.dataset.room; secChat(body); Cutout.cutAll(body); return; }
+      const s = e.target.closest("[data-stk]");
+      if (s) { await Store.sendSala(salaRoom, "", s.dataset.stk); loadSala($("#chatWall")); }
+    };
+    $("#salaForm").onsubmit = async (e) => {
       e.preventDefault();
       const v = $("#salaInput").value.trim(); if (!v) return;
-      if (BLOCK.test(v)) { toast("Ups: no compartas teléfonos, correos ni enlaces aquí."); return; }
-      if (BAD.some((w) => v.toLowerCase().includes(w))) { toast("Usemos palabras amables 💛"); return; }
+      if (BLOCK.test(v)) { toast("No compartas teléfonos, correos ni enlaces aquí."); return; }
+      if (BAD.some((w) => v.toLowerCase().includes(w))) { toast("Usemos palabras amables"); return; }
       $("#salaInput").value = "";
-      try { await Store.sendSala(salaRoom, v, ""); loadSala(); } catch (ex) { toast("No se pudo enviar: " + ex.message); }
-    });
-    $(".stk-row", body).onclick = async (e) => { const b = e.target.closest("[data-stk]"); if (!b) return; await Store.sendSala(salaRoom, "", b.dataset.stk); loadSala(); };
-    loadSala();
+      try { await Store.sendSala(salaRoom, v, ""); loadSala($("#chatWall")); } catch (ex) { toast("No se pudo enviar: " + ex.message); }
+    };
+    loadSala($("#chatWall"));
   }
 
   async function loadSala(el, canDelete) {
-    el = el || $("#salaWall"); if (!el) return;
+    if (!el) return;
     const list = await Store.sala(salaRoom).catch(() => []);
-    el.innerHTML = list.length ? list.map((m, i) => `
-      <div class="postit bg-${COLORS[i % COLORS.length]} ${m.mine ? "mine" : ""}" style="--rot:${((i * 37) % 7) - 3}deg">
+    el.innerHTML = list.length ? list.map((m) => `
+      <div class="postit ${m.mine ? "mine" : ""}">
         ${m.sticker ? sticker(m.sticker) : `<p>${esc(m.texto)}</p>`}
-        <p class="postit-who">${esc(m.autor_nombre)} · ${fHora(m.created_at)}</p>
-        ${canDelete ? `<button class="link-btn del" data-del="${m.id}">quitar</button>` : ""}
-      </div>`).join("") : `<p class="muted center">Nadie ha escrito todavía. ¡Sé la primera persona!</p>`;
+        <span class="who">${esc(m.autor_nombre)} · ${fHora(m.created_at)}</span>
+        ${canDelete ? `<button type="button" class="link-btn" data-del="${esc(m.id)}">Quitar</button>` : ""}
+      </div>`).join("") : `<div class="empty">Nadie ha escrito todavía. ¡Saluda!</div>`;
     el.scrollTop = el.scrollHeight;
   }
 
   /* =========================================================
-     PANEL DEL PERSONAL DE APOYO (RECEPCIÓN)
+     RECEPCIÓN (personal de apoyo)
      ========================================================= */
   let staffPatients = [];
-  let staffSel = null;
-  let staffTab = "avisar";
+  let staffTab = "pacientes";
+  let staffView = null;      // { type: "aviso" | "ficha" | "ruta", codigo }
+  let staffSearch = "";
   let avisoTipo = "mensaje";
+  const PRESETS = ["Ven a recepción, por favor", "Empieza tu ayuno ahora", "Tu cita se adelantó 30 min", "Tu familiar te espera abajo"];
 
   async function renderStaff() {
-    const me = Store.state.me;
-    $("#staffHello").innerHTML = "";
-    const h = document.createElement("span");
-    h.dataset.cut = "mi panel"; h.dataset.seed = "9";
-    $("#staffHello").appendChild(h); Cutout.cut(h);
-    $("#staffSub").textContent = `${me.nombre} · ${me.puesto || "Personal de apoyo"} · ${me.codigo}`;
-    $("#staffBadge").hidden = Store.state.mode !== "demo";
-
-    $("#staffList").innerHTML = `<p class="muted">Cargando pacientes…</p>`;
-    try { staffPatients = await Store.myPatients(); } catch (ex) { $("#staffList").innerHTML = `<p class="form-error">${esc(ex.message)}</p>`; return; }
-    if (!staffSel && staffPatients[0]) staffSel = staffPatients[0].codigo;
-    drawStaffList();
-    drawStaffMain();
+    try { staffPatients = await Store.myPatients(); } catch (ex) { $("#staffBody").innerHTML = `<p class="form-error">${esc(ex.message)}</p>`; return; }
+    drawStaff();
     ensureLive();
   }
 
-  function drawStaffList() {
-    $("#staffList").innerHTML = `
-      <p class="card-k">Pacientes</p>
-      ${staffPatients.map((p) => `
-        <button class="pt-btn ${p.codigo === staffSel ? "on" : ""}" data-pt="${esc(p.codigo)}">
-          <strong>${esc(p.nombre)}</strong>
-          <span class="small">${esc(p.codigo)} · ${p.tipo === "internado" ? "Cuarto " + esc(p.cuarto) : "Con citas"}</span>
-        </button>`).join("") || `<p class="muted">No tienes pacientes asignados.</p>`}
-      <p class="card-k" style="margin-top:1rem">Hospital</p>
-      <button class="pt-btn tool ${staffSel === "__avisos" ? "on" : ""}" data-pt="__avisos">${icon("megafono")}<strong>Avisos del hospital</strong></button>
-      <button class="pt-btn tool ${staffSel === "__sala" ? "on" : ""}" data-pt="__sala">${icon("chat")}<strong>Cuidar el chat</strong></button>`;
-    $("#staffList").onclick = (e) => { const b = e.target.closest("[data-pt]"); if (!b) return; staffSel = b.dataset.pt; drawStaffList(); drawStaffMain(); };
+  function ptInfo(p) {
+    const { items, cur } = sortedSteps(p);
+    if (p.tipo === "internado") return `Cuarto ${p.cuarto} · ruta ${Math.min(cur, items.length)}/${items.length}`;
+    const c = p.citas.filter((x) => new Date(x.inicio) > new Date()).sort((a, b) => new Date(a.inicio) - new Date(b.inicio))[0];
+    return c ? `Cita ${cuando(c.inicio)} ${fHora(c.inicio)} · ${c.titulo}` : "Sin citas próximas";
   }
 
-  function drawStaffMain() {
-    const main = $("#staffMain");
+  function drawStaff() {
+    const me = Store.state.me;
+    const old = $("#staffBody"); const body = old.cloneNode(false); old.replaceWith(body);
+    const header = `
+      <div class="staff-head">
+        ${cutTitle("Recepción", 24, 8)}
+        <div class="staff-who"><span>${esc(me.nombre.split(" ")[0])}<br>${esc(me.horario || me.puesto || "")}</span>
+          <span style="display:flex;gap:6px;align-items:center">${Store.state.mode === "demo" ? `<span class="demo-badge">demo</span>` : ""}<button type="button" class="btn-soft btn-sm" id="staffLogout">Salir</button></span></div>
+      </div>`;
 
-    if (staffSel === "__sala") {
-      main.innerHTML = `
-        <div class="sec-head"><h2 class="mag-h">Cuidar el chat</h2>
-          <div class="filter">${ROOMS.map(([k, t, c]) => `<button class="pill bg-${c} ${k === salaRoom ? "on" : ""}" data-room="${k}">${t}</button>`).join("")}</div></div>
-        <div class="sala-box"><div class="sala-wall" id="staffSala"></div>
-          <form class="composer" id="staffSalaForm"><input id="staffSalaInput" maxlength="240" placeholder="Mensaje de recepción para el chat…" autocomplete="off"/><button class="btn btn-ink">Enviar</button></form></div>`;
-      $(".filter", main).onclick = (e) => { const b = e.target.closest("[data-room]"); if (b) { salaRoom = b.dataset.room; drawStaffMain(); } };
-      $("#staffSalaForm").onsubmit = async (e) => { e.preventDefault(); const v = $("#staffSalaInput").value.trim(); if (!v) return; $("#staffSalaInput").value = ""; await Store.sendSala(salaRoom, v, ""); loadSala($("#staffSala"), true); };
-      $("#staffSala").onclick = async (e) => { const b = e.target.closest("[data-del]"); if (!b) return; try { await Store.deleteSala(salaRoom, b.dataset.del); loadSala($("#staffSala"), true); } catch (ex) { toast(ex.message); } };
-      loadSala($("#staffSala"), true);
+    if (staffView) {
+      const p = staffPatients.find((x) => x.codigo === staffView.codigo);
+      body.innerHTML = header + `<button type="button" class="btn-back" id="staffBack">← Pacientes</button>` + staffDetail(p);
+      Cutout.cutAll(body);
+      $("#staffLogout").onclick = doLogout;
+      $("#staffBack").onclick = () => { staffView = null; drawStaff(); };
+      mountStaffDetail(body, p);
       return;
     }
 
-    if (staffSel === "__avisos") {
-      main.innerHTML = `
-        <div class="sec-head"><h2 class="mag-h">Avisos del hospital</h2></div>
-        <p class="muted">Se muestran a todos en la banda de la página de inicio.</p>
-        <form class="composer big" id="hospAvisoForm"><input id="hospAvisoInput" maxlength="140" placeholder="Ej.: Horario de visitas de 16:00 a 18:00" autocomplete="off"/><button class="btn btn-ink">Publicar</button></form>
-        <div class="hosp-avisos" id="hospAvisos"></div>`;
-      $("#hospAvisoForm").onsubmit = async (e) => {
-        e.preventDefault(); const v = $("#hospAvisoInput").value.trim(); if (!v) return;
-        try { await Store.addAviso(v); $("#hospAvisoInput").value = ""; loadHospAvisos(); toast("Aviso publicado"); } catch (ex) { toast("No se pudo publicar: " + ex.message); }
-      };
-      $("#hospAvisos").onclick = async (e) => { const b = e.target.closest("[data-delaviso]"); if (!b) return; try { await Store.deleteAviso(b.dataset.delaviso); loadHospAvisos(); } catch (ex) { toast(ex.message); } };
-      loadHospAvisos();
-      return;
-    }
-
-    const p = staffPatients.find((x) => x.codigo === staffSel);
-    if (!p) { main.innerHTML = `<p class="muted">Elige un paciente.</p>`; return; }
-    main.innerHTML = `
-      <div class="pt-head bg-frosted">
-        <h2>${esc(p.nombre)}</h2>
-        <p class="small">${esc(p.codigo)} · ${edad(p.fecha_nacimiento)} · ${esc(p.area)}${p.cuarto ? " · Cuarto " + esc(p.cuarto) : ""}</p>
-        <p class="small">Alergias: <strong>${p.alergias.length ? p.alergias.map(esc).join(", ") : "ninguna"}</strong></p>
+    body.innerHTML = header + `
+      <div class="seg">
+        <button type="button" class="seg-btn ${staffTab === "pacientes" ? "on" : ""}" data-tab="pacientes">Pacientes</button>
+        <button type="button" class="seg-btn ${staffTab === "hospital" ? "on" : ""}" data-tab="hospital">Hospital</button>
+        <button type="button" class="seg-btn ${staffTab === "chat" ? "on" : ""}" data-tab="chat">Chat</button>
       </div>
-      <div class="filter staff-tabs">
-        ${[["avisar", "Enviar aviso", "avisos"], ["expediente", "Expediente", "expediente"], ["ruta", "Ruta", "ruta"]].map(([k, t, ic]) => `<button class="pill ${k === staffTab ? "on" : ""}" data-st="${k}">${icon(ic)}${t}</button>`).join("")}
-      </div>
-      <div id="staffPane"></div>`;
-    $(".staff-tabs", main).onclick = (e) => { const b = e.target.closest("[data-st]"); if (b) { staffTab = b.dataset.st; drawStaffMain(); } };
+      <div id="staffPane" class="list-col"></div>`;
+    Cutout.cutAll(body);
+    $("#staffLogout").onclick = doLogout;
+    $$("[data-tab]", body).forEach((b) => (b.onclick = () => { staffTab = b.dataset.tab; drawStaff(); }));
     const pane = $("#staffPane");
+    if (staffTab === "pacientes") drawPatients(pane);
+    else if (staffTab === "hospital") drawHospital(pane);
+    else drawStaffChat(pane);
+  }
 
-    if (staffTab === "avisar") {
-      pane.innerHTML = `
-        <form class="paper send-form" id="sendForm">
-          <p class="lbl">¿Qué tipo de aviso es?</p>
-          <div class="type-pick">
-            ${Object.entries(TIPO_AVISO).reverse().map(([k, [t, c]]) => `<button type="button" class="type-btn bg-${c} ${k === avisoTipo ? "on" : ""}" data-tipo="${k}">${t}</button>`).join("")}
+  function drawPatients(pane) {
+    pane.innerHTML = `
+      <input class="search" id="ptSearch" placeholder="Buscar nombre o ID…" value="${esc(staffSearch)}" autocomplete="off" />
+      <div id="ptList" class="pt-grid"></div>
+      <button type="button" class="fab-wide" id="fabAviso">+ Publicar aviso del hospital</button>`;
+    const draw = () => {
+      const q = staffSearch.toLowerCase();
+      const list = staffPatients.filter((p) => !q || p.nombre.toLowerCase().includes(q) || p.codigo.toLowerCase().includes(q));
+      $("#ptList").innerHTML = list.length ? list.map((p) => `
+        <div class="pt-card">
+          <div class="pt-top"><span>${esc(p.nombre)}</span><span class="mono">${esc(p.codigo)}</span></div>
+          <span class="pt-info">${esc(ptInfo(p))}</span>
+          <div class="pt-actions">
+            <button type="button" class="urg" data-urg="${esc(p.codigo)}">! Urgente</button>
+            <button type="button" data-view="aviso" data-pt="${esc(p.codigo)}">Aviso</button>
+            <button type="button" data-view="ficha" data-pt="${esc(p.codigo)}">Ficha</button>
+            <button type="button" data-view="ruta" data-pt="${esc(p.codigo)}">Ruta</button>
           </div>
-          <label class="lbl" for="sendText">Mensaje para ${esc(p.apodo || p.nombre)}</label>
-          <textarea id="sendText" rows="3" maxlength="600" placeholder="Escribe el aviso…"></textarea>
-          <button class="btn btn-ink" type="submit">Enviar aviso</button>
-        </form>
-        <h3 class="sub">Avisos enviados</h3>
-        <div class="avisos-list" id="sentList"></div>`;
-      $(".type-pick", pane).onclick = (e) => { const b = e.target.closest("[data-tipo]"); if (!b) return; avisoTipo = b.dataset.tipo; $$(".type-btn", pane).forEach((x) => x.classList.toggle("on", x === b)); };
-      $("#sendForm").onsubmit = async (e) => {
-        e.preventDefault(); const v = $("#sendText").value.trim(); if (!v) return;
-        try { await Store.sendMessage(p, v, avisoTipo); $("#sendText").value = ""; toast("Aviso enviado"); loadSent(p); } catch (ex) { toast("No se pudo enviar: " + ex.message); }
-      };
-      loadSent(p);
-    } else if (staffTab === "expediente") {
-      pane.innerHTML = expedienteHTML(p);
-      bindDocs(pane, p);
-    } else {
-      pane.innerHTML = routeHTML(p, false);
-    }
+        </div>`).join("") : `<div class="empty">No encontré a nadie con ese nombre o ID.</div>`;
+    };
+    draw();
+    $("#ptSearch").oninput = (e) => { staffSearch = e.target.value; draw(); };
+    $("#ptList").onclick = (e) => {
+      const u = e.target.closest("[data-urg]");
+      if (u) return openUrgent(staffPatients.find((p) => p.codigo === u.dataset.urg));
+      const v = e.target.closest("[data-view]");
+      if (v) { staffView = { type: v.dataset.view, codigo: v.dataset.pt }; drawStaff(); }
+    };
+    $("#fabAviso").onclick = openHospAviso;
+  }
+
+  // Urgente en 2 toques: 1) "! Urgente"  2) un mensaje listo
+  function openUrgent(p) {
+    const who = p.apodo || p.nombre.split(" ")[0];
+    openSheet(`
+      <div class="sheet-top"><span class="sheet-step">Toque 2 de 2</span><button type="button" class="btn-soft btn-sm" data-close>Cancelar</button></div>
+      <h3>Urgente para ${esc(who)}</h3>
+      ${PRESETS.map((t, i) => `<button type="button" class="preset" data-preset="${i}">${esc(t)}</button>`).join("")}
+      <button type="button" class="btn-soft" id="otherMsg">Escribir otro…</button>`,
+      (panel) => {
+        panel.onclick = (e) => {
+          const b = e.target.closest("[data-preset]");
+          if (b) sendUrgent(p, PRESETS[+b.dataset.preset]);
+          if (e.target.closest("#otherMsg")) {
+            panel.innerHTML = `
+              <div class="sheet-top"><span class="sheet-step">Urgente</span><button type="button" class="btn-soft btn-sm" data-close>Cancelar</button></div>
+              <h3>Urgente para ${esc(who)}</h3>
+              <textarea id="urgText" maxlength="600" placeholder="Escribe el aviso…"></textarea>
+              <button type="button" class="btn btn-primary" id="urgSend">Enviar urgente</button>`;
+            $$("[data-close]", panel).forEach((x) => (x.onclick = closeSheet));
+            $("#urgText", panel).focus();
+            $("#urgSend", panel).onclick = () => { const v = $("#urgText", panel).value.trim(); if (v) sendUrgent(p, v); };
+          }
+        };
+      });
+  }
+  async function sendUrgent(p, texto, tipo) {
+    closeSheet();
+    try {
+      const id = await Store.sendMessage(p, texto, tipo || "urgente");
+      const who = p.apodo || p.nombre.split(" ")[0];
+      toast(`Enviado a ${who}`, { label: "Deshacer", run: async () => { try { await Store.deleteMessage(p, id); toast("Aviso cancelado"); refreshStaffLive(); } catch (ex) { toast("No se pudo deshacer: " + ex.message); } } });
+      refreshStaffLive();
+    } catch (ex) { toast("No se pudo enviar: " + ex.message); }
+  }
+
+  function openHospAviso() {
+    openSheet(`
+      <div class="sheet-top"><span class="sheet-step">Aviso del hospital</span><button type="button" class="btn-soft btn-sm" data-close>Cancelar</button></div>
+      <h3>Lo verán todos en la portada</h3>
+      <input id="hospText" maxlength="140" placeholder="Ej.: Visitas de 16:00 a 18:00" autocomplete="off" />
+      <button type="button" class="btn btn-primary" id="hospSend">Publicar</button>`,
+      (panel) => {
+        $("#hospText", panel).focus();
+        $("#hospSend", panel).onclick = async () => {
+          const v = $("#hospText", panel).value.trim(); if (!v) return;
+          try { await Store.addAviso(v); closeSheet(); toast("Aviso publicado"); if (staffTab === "hospital") drawStaff(); }
+          catch (ex) { toast("No se pudo publicar: " + ex.message); }
+        };
+      });
+  }
+
+  async function drawHospital(pane) {
+    const list = await Store.avisos().catch(() => []);
+    pane.innerHTML = `
+      <p class="small">Se muestran a todos en la banda de la portada.</p>
+      ${list.length ? list.map((a) => `<div class="hosp-aviso"><span>${esc(a.texto)}</span><button type="button" class="pill-light" data-delaviso="${esc(a.id)}">Quitar</button></div>`).join("") : `<div class="empty">No hay avisos publicados.</div>`}
+      <button type="button" class="fab-wide" id="fabAviso">+ Publicar aviso del hospital</button>`;
+    $("#fabAviso").onclick = openHospAviso;
+    pane.onclick = async (e) => {
+      const b = e.target.closest("[data-delaviso]"); if (!b) return;
+      try { await Store.deleteAviso(b.dataset.delaviso); drawHospital(pane); } catch (ex) { toast(ex.message); }
+    };
+  }
+
+  function drawStaffChat(pane) {
+    pane.innerHTML = `
+      <div class="seg">${ROOMS.map(([k, t]) => `<button type="button" class="seg-btn ${k === salaRoom ? "on" : ""}" data-room="${k}">${t}</button>`).join("")}</div>
+      <div class="chat-wall" id="staffWall"></div>
+      <form class="composer" id="staffSalaForm"><input id="staffSalaInput" maxlength="240" placeholder="Mensaje de recepción…" autocomplete="off" /><button class="btn btn-primary">Enviar</button></form>`;
+    pane.onclick = async (e) => {
+      const r = e.target.closest("[data-room]");
+      if (r) { salaRoom = r.dataset.room; drawStaffChat(pane); return; }
+      const d = e.target.closest("[data-del]");
+      if (d) { try { await Store.deleteSala(salaRoom, d.dataset.del); loadSala($("#staffWall"), true); } catch (ex) { toast(ex.message); } }
+    };
+    $("#staffSalaForm").onsubmit = async (e) => {
+      e.preventDefault(); const v = $("#staffSalaInput").value.trim(); if (!v) return;
+      $("#staffSalaInput").value = ""; await Store.sendSala(salaRoom, v, ""); loadSala($("#staffWall"), true);
+    };
+    loadSala($("#staffWall"), true);
+  }
+
+  function staffDetail(p) {
+    const head = `<div class="card"><div class="pt-top"><span>${esc(p.nombre)}</span><span class="mono">${esc(p.codigo)}</span></div><span class="pt-info" style="margin:0">${esc(ptInfo(p))}</span></div>`;
+    if (staffView.type === "ficha") return head + expedienteHTML(p);
+    if (staffView.type === "ruta") return head + rutaHTML(p, true);
+    return head + `
+      <div class="send-layout"><div class="card">
+        <p class="lbl" style="margin-top:0">¿Qué tipo de aviso es?</p>
+        <div class="type-pick">${["mensaje", "recordatorio", "urgente"].map((k) => `<button type="button" class="type-btn ${k === avisoTipo ? "on" : ""}" data-tipo="${k}">${TIPO_LBL[k]}</button>`).join("")}</div>
+        <label for="sendText">Mensaje para ${esc(p.apodo || p.nombre.split(" ")[0])}</label>
+        <textarea id="sendText" maxlength="600" placeholder="Escribe el aviso…"></textarea>
+        <button type="button" class="btn btn-primary" id="sendBtn" style="margin-top:12px;width:100%">Enviar aviso</button>
+      </div>
+      <div class="list-col"><h2 class="h-sub">Avisos enviados</h2>
+      <div class="list-col" id="sentList"></div></div></div>`;
+  }
+
+  function mountStaffDetail(body, p) {
+    if (staffView.type === "ficha") return bindExpediente(body, p);
+    if (staffView.type === "ruta") return bindRuta(body, p);
+    $$("[data-tipo]", body).forEach((b) => (b.onclick = () => { avisoTipo = b.dataset.tipo; $$("[data-tipo]", body).forEach((x) => x.classList.toggle("on", x === b)); }));
+    $("#sendBtn").onclick = () => { const v = $("#sendText").value.trim(); if (!v) return; $("#sendText").value = ""; sendUrgent(p, v, avisoTipo); };
+    loadSent(p);
   }
 
   async function loadSent(p) {
     const el = $("#sentList"); if (!el) return;
-    const list = (await Store.messages(p).catch(() => [])).sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
-    el.innerHTML = list.length ? list.map((m) => avisoHTML(m, true)).join("") : `<p class="muted">Aún no le has enviado avisos.</p>`;
-  }
-
-  async function loadHospAvisos() {
-    const el = $("#hospAvisos"); if (!el) return;
-    const list = await Store.avisos().catch(() => []);
-    el.innerHTML = list.length ? list.map((a) => `
-      <div class="hosp-aviso">${icon("megafono")}<span>${esc(a.texto)}</span><button class="btn btn-ghost btn-small" data-delaviso="${esc(a.id)}">Quitar</button></div>`).join("")
-      : `<p class="muted">No hay avisos publicados.</p>`;
+    const list = (await Store.messages(p).catch(() => [])).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    el.innerHTML = list.length ? list.map((m) => `
+      <div class="aviso ${m.tipo || "mensaje"}" style="animation:none">
+        <div class="aviso-top"><span class="aviso-tag">${TIPO_LBL[m.tipo || "mensaje"]}</span><span>${fFecha(m.created_at)} · ${fHora(m.created_at)}</span></div>
+        <span class="aviso-txt" style="font-size:17px">${esc(m.texto)}</span>
+        <span class="aviso-from">${m.leido ? "✓ Leído" : "Sin leer"} · De: ${esc(m.autor_nombre)}</span>
+      </div>`).join("") : `<div class="empty">Aún no le has enviado avisos.</div>`;
   }
 
   function refreshStaffLive() {
-    if (staffSel === "__sala") return loadSala($("#staffSala"), true);
-    if (staffSel === "__avisos") return loadHospAvisos();
-    const p = staffPatients.find((x) => x.codigo === staffSel);
-    if (p && staffTab === "avisar") loadSent(p);
+    if (currentView !== "personal") return;
+    if (staffView && staffView.type === "aviso") {
+      const p = staffPatients.find((x) => x.codigo === staffView.codigo);
+      if (p) loadSent(p);
+    } else if (!staffView && staffTab === "chat") loadSala($("#staffWall"), true);
+    else if (!staffView && staffTab === "hospital") drawHospital($("#staffPane"));
   }
 
   /* =========================================================
@@ -825,10 +887,8 @@
     buildHome();
     Lupi.init();
     initLogin();
-    $("#logoutBtn").onclick = doLogout;
-    $("#staffLogout").onclick = doLogout;
-    $("#appBody").addEventListener("click", appBodyClicks);
-    $("#docDialogClose").onclick = () => $("#docDialog").close();
+    $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
     await Store.restore().catch(() => null);
     window.addEventListener("hashchange", route);
     route();
