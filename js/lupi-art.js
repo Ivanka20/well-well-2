@@ -7,13 +7,13 @@ window.lupiSVG = function (size) {
   return `
 <svg class="lupi-svg" viewBox="0 0 200 200" width="${s}" height="${s}" aria-hidden="true">
   <g class="lupi-body">
-    <circle cx="100" cy="100" r="88" fill="var(--frosted)" stroke="var(--slate)" stroke-width="7"/>
+    <circle cx="100" cy="100" r="88" fill="var(--verdigris)" stroke="var(--sea)" stroke-width="7"/>
     <g class="lupi-eyes">
-      <ellipse class="lupi-eye" cx="72" cy="84" rx="9" ry="13" fill="var(--slate)"/>
-      <ellipse class="lupi-eye" cx="128" cy="84" rx="9" ry="13" fill="var(--slate)"/>
+      <ellipse class="lupi-eye" cx="72" cy="84" rx="9" ry="13" fill="var(--sea)"/>
+      <ellipse class="lupi-eye" cx="128" cy="84" rx="9" ry="13" fill="var(--sea)"/>
     </g>
-    <path class="lupi-mouth" d="M62 118 q38 40 76 0" fill="none" stroke="var(--slate)" stroke-width="8" stroke-linecap="round"/>
-    <ellipse class="lupi-mouth-open" cx="100" cy="128" rx="18" ry="14" fill="var(--slate)"/>
+    <path class="lupi-mouth" d="M62 118 q38 40 76 0" fill="none" stroke="var(--sea)" stroke-width="8" stroke-linecap="round"/>
+    <ellipse class="lupi-mouth-open" cx="100" cy="128" rx="18" ry="14" fill="var(--sea)"/>
   </g>
 </svg>`;
 };

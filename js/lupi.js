@@ -5,7 +5,7 @@
    ========================================================= */
 (function () {
   const CARDS_KEY = "ww-lupi-cards";
-  const COLORS = ["frosted", "slate", "honeydew"];
+  const COLORS = ["cream", "verdigris", "sea"];
   const SUGGEST = ["Anestesia", "Biopsia", "Catéter", "Suero", "Hemograma", "Tomografía", "Ayuno", "Sutura", "Oxímetro", "Alta médica"];
 
   const GLOSARIO = {
@@ -37,7 +37,7 @@
 
   function show(term, text, color) {
     const b = $("#lupiBubble");
-    b.className = "bubble bg-" + (color || "honeydew");
+    b.className = "bubble bg-" + (color || "cream");
     $("#bubbleTerm").textContent = term;
     $("#bubbleText").innerHTML = fmt(text);
     b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
@@ -51,6 +51,34 @@
       : `<p class="muted">Aquí se guardan las palabras que vayas aprendiendo.</p>`;
   }
 
+  // Pregunta a /api/chat; si falla, usa el mini diccionario
+  async function fetchAnswer(q, m, hist) {
+    let answer = null;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q, mode: m || mode, history: hist || [] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        answer = data.answer || null;
+      }
+    } catch (_) {}
+    if (!answer) {
+      const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
+      answer = hit
+        ? hit[m || mode]
+        : "¡Uy! Ahorita no me pude conectar para buscar esa palabra. Intenta de nuevo en un ratito, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
+    }
+    return answer;
+  }
+
+  // Explicación corta para usar dentro de otras pantallas (Mi ruta, expediente)
+  async function explain(q) {
+    return fetchAnswer(q, mode, []);
+  }
+
   async function ask(q) {
     if (busy) return;
     q = q.trim();
@@ -61,25 +89,7 @@
     $("#bubbleTerm").textContent = q;
     $("#bubbleText").innerHTML = `<p class="dots-loading"><span></span><span></span><span></span></p>`;
 
-    let answer = null;
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, mode, history: history.slice(-6) }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        answer = data.answer || null;
-      }
-    } catch (_) {}
-
-    if (!answer) {
-      const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
-      answer = hit
-        ? hit[mode]
-        : "¡Uy! Ahorita no me pude conectar para buscar esa palabra. Intenta de nuevo en un ratito, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
-    }
+    const answer = await fetchAnswer(q, mode, history.slice(-6));
 
     history.push({ role: "user", content: q }, { role: "assistant", content: answer });
     const color = COLORS[loadCards().length % COLORS.length];
@@ -98,7 +108,7 @@
   function init() {
     $("#lupiBig").innerHTML = lupiSVG(260);
     document.querySelectorAll(".nav-lupi").forEach((el) => (el.innerHTML = lupiSVG(28)));
-    show("¡Hola! Soy Lupi", "Soy tu carita amiga y hago que las palabras difíciles se vuelvan **chiquitas y fáciles**. Escribe una palabra que hayas escuchado en el hospital y te la explico.", "honeydew");
+    show("¡Hola! Soy Lupi", "Soy tu carita amiga y hago que las palabras difíciles se vuelvan **chiquitas y fáciles**. Escribe una palabra que hayas escuchado en el hospital y te la explico.", "cream");
 
     $("#lupiChips").innerHTML = SUGGEST.map((s, i) => `<button type="button" class="chip bg-${COLORS[i % COLORS.length]}">${s}</button>`).join("");
     $("#lupiChips").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) ask(b.textContent); });
@@ -131,5 +141,5 @@
     renderCards();
   }
 
-  window.Lupi = { init, ask };
+  window.Lupi = { init, ask, explain, fmt };
 })();

@@ -222,6 +222,10 @@ create policy "mensajes: escribir" on public.mensajes for insert to authenticate
 drop policy if exists "mensajes: marcar leido" on public.mensajes;
 create policy "mensajes: marcar leido" on public.mensajes for update to authenticated
   using (paciente_id = public.mi_paciente_id()) with check (paciente_id = public.mi_paciente_id());
+-- Recepción puede "deshacer" (borrar) un aviso que acaba de enviar
+drop policy if exists "mensajes: deshacer" on public.mensajes;
+create policy "mensajes: deshacer" on public.mensajes for delete to authenticated
+  using (autor_perfil = auth.uid() and public.mi_personal_id() is not null);
 revoke update on public.mensajes from authenticated, anon;
 grant update (leido) on public.mensajes to authenticated;
 

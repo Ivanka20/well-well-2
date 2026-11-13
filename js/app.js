@@ -46,11 +46,11 @@
 
   /* ---------- stickers del chat ---------- */
   const STICKERS = {
-    star: '<path d="M24 4l6 13 14 2-10 10 3 14-13-7-13 7 3-14L4 19l14-2z" fill="var(--teal)"/>',
-    heart: '<path d="M24 42S6 30 6 17a9 9 0 0 1 18-3 9 9 0 0 1 18 3c0 13-18 25-18 25z" fill="var(--forest)"/>',
-    sun: '<circle cx="24" cy="24" r="10" fill="var(--teal)"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7M9 9l5 5M34 34l5 5M39 9l-5 5M14 34l-5 5"/>',
-    smile: '<circle cx="24" cy="24" r="18" fill="var(--mint)"/><path d="M16 27q8 8 16 0M18 19h.01M30 19h.01"/>',
-    cloud: '<path d="M14 36a9 9 0 0 1 0-18 12 12 0 0 1 22 2 8 8 0 0 1-1 16z" fill="var(--mint)"/>',
+    star: '<path d="M24 4l6 13 14 2-10 10 3 14-13-7-13 7 3-14L4 19l14-2z" fill="var(--verdigris)"/>',
+    heart: '<path d="M24 42S6 30 6 17a9 9 0 0 1 18-3 9 9 0 0 1 18 3c0 13-18 25-18 25z" fill="var(--sea)"/>',
+    sun: '<circle cx="24" cy="24" r="10" fill="var(--verdigris)"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7M9 9l5 5M34 34l5 5M39 9l-5 5M14 34l-5 5"/>',
+    smile: '<circle cx="24" cy="24" r="18" fill="var(--cream)"/><path d="M16 27q8 8 16 0M18 19h.01M30 19h.01"/>',
+    cloud: '<path d="M14 36a9 9 0 0 1 0-18 12 12 0 0 1 22 2 8 8 0 0 1-1 16z" fill="var(--cream)"/>',
   };
   const sticker = (k) => `<svg class="stk" viewBox="0 0 48 48" aria-label="sticker">${STICKERS[k] || ""}</svg>`;
 
@@ -496,7 +496,7 @@
   // si no, se arma una hoja con los datos que hay.
   function docPage(d, p) {
     return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${esc(d.titulo)}</title>
-      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#59734C;background:#BED8CB}h1{margin:0 0 4px}p.meta{margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
+      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#007380;background:#FFEFDB}h1{margin:0 0 4px}p.meta{margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
       </head><body><h1>${esc(d.titulo)}</h1><p class="meta">${esc(d.tipo || "")} · ${fDia(d.fecha)}</p>
       <dl><dt>Paciente</dt><dd>${esc(p.nombre)}</dd><dt>ID</dt><dd>${esc(p.codigo)}</dd><dt>Hospital</dt><dd>${esc(p.hospital)}</dd></dl>
       <h2>Resumen</h2><p>${esc(d.resumen || "")}</p></body></html>`;

@@ -175,11 +175,24 @@
     tipo = ["mensaje", "recordatorio", "urgente"].includes(tipo) ? tipo : "mensaje";
     if (state.mode === "demo") {
       const db = demoDb();
-      (db.mensajes[p.codigo] = db.mensajes[p.codigo] || []).push({ id: uid(), autor_nombre: nombre, autor_rol: state.role, texto, tipo, leido: false, created_at: new Date().toISOString() });
+      const id = uid();
+      (db.mensajes[p.codigo] = db.mensajes[p.codigo] || []).push({ id, autor_nombre: nombre, autor_rol: state.role, texto, tipo, leido: false, created_at: new Date().toISOString() });
+      saveDemo(db);
+      return id;
+    }
+    const row = await must(sb.from("mensajes").insert({ paciente_id: p.id, autor_perfil: state.uid, autor_nombre: nombre, autor_rol: state.role, texto, tipo }).select("id").single());
+    return row.id;
+  }
+
+  // "Deshacer" justo después de enviar un aviso
+  async function deleteMessage(p, id) {
+    if (state.mode === "demo") {
+      const db = demoDb();
+      db.mensajes[p.codigo] = (db.mensajes[p.codigo] || []).filter((m) => m.id !== id);
       saveDemo(db);
       return;
     }
-    await must(sb.from("mensajes").insert({ paciente_id: p.id, autor_perfil: state.uid, autor_nombre: nombre, autor_rol: state.role, texto, tipo }));
+    await must(sb.from("mensajes").delete().eq("id", id));
   }
 
   async function markRead(p, id) {
@@ -287,5 +300,5 @@
     return () => sb.removeChannel(ch);
   }
 
-  window.Store = { state, login, restore, logout, myPatients, messages, sendMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf };
+  window.Store = { state, login, restore, logout, myPatients, messages, sendMessage, deleteMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf };
 })();
