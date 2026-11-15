@@ -8,7 +8,7 @@
    - Caribbean Current #007380  texto, contornos, botones principales
    - Tomato            #FF644F  urgente (bordes y sombras), sombras duras
    - Coral             #FF7F50  detalles y letras recortadas
-   - Verdigris         #21BBBB  sombras suaves, Lupi, "en proceso"
+   - Azul claro        #A9C9D5  sombras suaves, Lupita, "en proceso" (variable --verdigris)
    Texto legible: Caribbean sobre Antique white, o Antique white sobre Caribbean.
    Tomato, Coral y Verdigris se usan como color de acento, no como fondo de texto.
    ========================================================= */
@@ -17,7 +17,7 @@
   --sea: #007380;
   --tomato: #FF644F;
   --coral: #FF7F50;
-  --verdigris: #21BBBB;
+  --verdigris: #A9C9D5;
   --white: #FFFFFF;     /* fondo de la página */
   /* Transcity se carga desde /fonts; mientras tanto, Young Serif */
   --serif: "Transcity", "Young Serif", Georgia, serif;
@@ -203,7 +203,7 @@ input::placeholder, textarea::placeholder { color: var(--sea); opacity: .6; }
 .home-logo .cut { flex-wrap: nowrap; }
 @media (min-width: 600px) { .home-logo .cut { transform: scale(1.35); transform-origin: left center; margin: 14px 0; } }
 .home-tag { font-size: 20px; line-height: 1.3; }
-.band { flex: none; margin: 6px -20px; background: var(--sea); color: var(--cream); overflow: hidden; padding: 12px 0; transform: rotate(-1.5deg); }
+.band { flex: none; margin: 6px -20px; background: var(--sea); color: var(--cream); overflow: hidden; padding: 12px 0; }
 .band-track { display: flex; width: max-content; gap: 28px; font-size: 16px; white-space: nowrap; animation: ww-marquee 18s linear infinite; }
 .rumbo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .rumbo-tile {
@@ -722,7 +722,7 @@ body { background: var(--white); }
    ========================================================= */
 body {
   background-color: var(--white);
-  background-image: radial-gradient(rgba(33, 187, 187, .45) 1.6px, transparent 2px);
+  background-image: radial-gradient(rgba(169, 201, 213, .75) 1.6px, transparent 2px);
   background-size: 26px 26px;
 }
 /* la banda de avisos va de orilla a orilla */

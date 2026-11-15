@@ -735,7 +735,7 @@
         icon: L.divIcon({ className: "svc-me", html: "<span></span>", iconSize: [24, 24], iconAnchor: [12, 12] }),
         title: "Punto de partida", keyboard: false, zIndexOffset: 1000,
       }).bindTooltip("Punto de partida").addTo(originLayer);
-      if (S.tab === "buscar") circle = L.circle([S.origin.lat, S.origin.lon], { radius: S.radius * 1000, color: "#007380", weight: 2, dashArray: "6 6", fillColor: "#21BBBB", fillOpacity: 0.06, interactive: false }).addTo(originLayer);
+      if (S.tab === "buscar") circle = L.circle([S.origin.lat, S.origin.lon], { radius: S.radius * 1000, color: "#007380", weight: 2, dashArray: "6 6", fillColor: "#A9C9D5", fillOpacity: 0.06, interactive: false }).addTo(originLayer);
     }
     list.forEach((p, i) => {
       const enRuta = S.route && S.route.id === p.id;
