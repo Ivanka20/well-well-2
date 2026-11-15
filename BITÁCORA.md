@@ -80,6 +80,8 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
    <img width="400" height="380" alt="image" src="https://github.com/user-attachments/assets/17b5d1b3-d7ac-46fa-bb66-c8bb98387ccb" />
 
 
+  
+
 **CASO PRUEBA B**
 
    **Input exacto:** pestaña «Paciente o familiar», ID de paciente WW-2048-17, código de acceso 123456, botón «Entrar →».
