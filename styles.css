@@ -833,6 +833,46 @@ body {
 .svc-loading { display: flex; align-items: center; gap: 10px; }
 .svc-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .svc-results:empty { display: none; }
+.svc-nofilter { font-size: 16px; padding: 10px 12px; border-radius: 14px; border: 2px solid var(--coral); background: var(--cream); }
+
+/* mapa (Leaflet) */
+.svc-map {
+  position: relative; z-index: 0; isolation: isolate;
+  height: 340px; border-radius: 22px; border: 2.5px solid var(--sea); box-shadow: 5px 5px 0 var(--verdigris);
+  overflow: hidden; background: var(--cream);
+}
+.svc-map-off { height: 100%; display: grid; place-items: center; padding: 20px; text-align: center; font-size: 16px; }
+.svc-map .leaflet-popup-content { font-family: var(--serif); font-size: 15px; color: var(--sea); line-height: 1.45; }
+.svc-map .leaflet-popup-content-wrapper { border-radius: 14px; border: 2px solid var(--sea); }
+.svc-map .leaflet-control-attribution { font-size: 11px; }
+.svc-pin span {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--sea); color: var(--cream); border: 2.5px solid var(--cream);
+  box-shadow: 2px 2px 0 var(--tomato); font: 700 13px var(--mono);
+}
+.svc-pin.saved span { background: var(--coral); }
+.svc-pin.routed span { background: var(--tomato); transform: scale(1.2); box-shadow: 0 0 0 3px var(--sea); }
+.svc-me span {
+  display: block; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--sea); border: 4px solid var(--cream); box-shadow: 0 0 0 3px var(--tomato);
+}
+
+/* panel de ruta */
+.svc-route { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 22px; background: var(--cream); border: 2.5px solid var(--tomato); box-shadow: 5px 5px 0 var(--tomato); scroll-margin-top: 90px; }
+.svc-route-to { font-size: 18px; }
+.svc-route-sum { font-size: 19px; }
+.svc-route-sum b { font-size: 24px; }
+.svc-modo { max-width: 320px; }
+.svc-steps summary { cursor: pointer; font-size: 16px; min-height: 36px; display: flex; align-items: center; }
+.svc-steps ol { margin: 6px 0 0; padding-left: 24px; display: flex; flex-direction: column; gap: 6px; font-size: 16px; }
+.place-alt { font-size: 15px; align-self: flex-start; }
+
+/* número de la ficha = número en el mapa */
+.place-n { flex: none; width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--sea); color: var(--cream); font: 700 14px var(--mono); }
+.place.saved .place-n { background: var(--coral); }
+.place.routed { border-color: var(--tomato); box-shadow: 4px 4px 0 var(--tomato); }
+.place.routed .place-n { background: var(--tomato); }
+.place.flash { animation: ww-wiggle 1.2s ease 1; }
 
 .place {
   display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 20px;
@@ -861,6 +901,7 @@ body {
   .svc-layout { display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 36px; align-items: start; }
   .svc-saved-mode .svc-layout { grid-template-columns: 1fr; }
   .svc-main { position: relative; }
+  .svc-map { height: 460px; }
   .svc-tabs { max-width: 560px; }
   .svc-tile { padding: 22px 26px; }
   .svc-tile .lbl-big { font-size: 26px; }

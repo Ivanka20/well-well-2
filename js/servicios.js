@@ -4,8 +4,9 @@
    después del alta: hospitales, rehabilitación, fisioterapia,
    farmacias, laboratorios y atención especializada.
 
-   Sin mapa y sin claves: la familia escribe qué busca, dice
-   dónde, y la app devuelve una lista con nombre y dirección.
+   Sin claves: la familia escribe qué busca, dice dónde, y la
+   app devuelve la lista con nombre y dirección, un mapa con
+   los lugares y la ruta desde su punto de partida.
 
    Datos: OpenStreetMap (gratis, sin registro)
      - Overpass API → establecimientos reales cercanos
@@ -13,6 +14,8 @@
                       coordenadas → dirección (cuando el lugar
                       no tiene su dirección registrada); y
                       respaldo de búsqueda si Overpass está saturado
+     - OSRM (routing.openstreetmap.de) → ruta en auto o a pie
+   Mapa: Leaflet + mosaicos de OpenStreetMap
 
    Uso:  Servicios.mount(contenedor, { patient, cat, back })
          Servicios.detect("¿dónde hay fisioterapia?")  (para Lupita)
@@ -38,6 +41,14 @@
   ];
   const OVERPASS_TIMEOUT = 10000;
   const NOMINATIM = "https://nominatim.openstreetmap.org";
+  const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+  const CENTRO_INICIAL = { lat: 23.6345, lon: -102.5528, zoom: 4 }; // México
+  // Rutas (OSRM). El de FOSSGIS es el que usa openstreetmap.org; el segundo es respaldo para auto.
+  const ROUTERS = {
+    auto: ["https://routing.openstreetmap.de/routed-car/route/v1/driving/", "https://router.project-osrm.org/route/v1/driving/"],
+    pie: ["https://routing.openstreetmap.de/routed-foot/route/v1/foot/"],
+  };
 
   const RADIOS = [1, 5, 10, 20];
   const PAGE = 20;
@@ -429,7 +440,7 @@
     query: null,           // { cat } o { text } · lo que buscan
     origin: null,          // { lat, lon, label } (no se guarda: es la casa de la familia)
     radius: RADIOS.includes(prefs.radius) ? prefs.radius : 5,
-    filters: new Set((prefs.filters || []).filter((k) => ACCESOS.some((a) => a.k === k))),
+    filters: new Set(),    // los filtros de accesibilidad empiezan apagados en cada visita
     results: [],
     status: "idle",        // idle | loading | done | error
     error: "",
@@ -441,7 +452,7 @@
     candidates: [],
     patient: null,
   };
-  const savePrefs = () => lsSet(PREFS_KEY, { radius: S.radius, filters: [...S.filters] });
+  const savePrefs = () => lsSet(PREFS_KEY, { radius: S.radius });
   const queryLabel = (q) => (q ? (q.cat ? CATS[q.cat].short : `«${q.text}»`) : "");
 
   let root = null;
@@ -518,6 +529,8 @@
 
         <div class="svc-main">
           <div class="svc-status" id="svcStatus" aria-live="polite"></div>
+          <section class="svc-route" id="svcRoute" aria-live="polite" hidden></section>
+          <div class="svc-map" id="svcMap" role="region" aria-label="Mapa con los lugares encontrados"></div>
           <ol class="svc-results" id="svcList"></ol>
           <div id="svcMore"></div>
           <p class="note-dashed">Los datos vienen de <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, un mapa que hace la comunidad, y pueden estar incompletos. Llamen antes de ir para confirmar horarios y servicios. <b>En una emergencia llamen al 911.</b></p>
@@ -526,7 +539,9 @@
     if (window.Cutout) Cutout.cutAll(root);
     bind();
     drawTabs(); drawAsk(); drawEtapa(); drawOrigin(); drawRadius(); drawFilters();
-    drawResults();
+    initMap();
+    drawResults(true);
+    drawRoute();
     loadSaved();
     if (S.query && S.origin && S.status !== "done") search();
   }
@@ -607,10 +622,13 @@
     return S.status === "done" ? S.results : [];
   }
 
-  function drawResults() {
+  function drawResults(fit) {
     const status = $("#svcStatus", root);
     const base = currentBase();
-    const list = base.filter(passFilters);
+    const filtrados = base.filter(passFilters);
+    // Si los filtros dejan 0, igual mostramos todos los lugares (nunca una lista vacía sin nombres)
+    const sinCoincidencias = S.filters.size > 0 && base.length > 0 && filtrados.length === 0;
+    const list = sinCoincidencias ? base : filtrados;
     const visible = list.slice(0, S.shown);
     let msg = "";
 
@@ -629,7 +647,7 @@
           (S.radius < 20 ? `<button type="button" class="btn-soft btn-sm" data-radius-up>Buscar más lejos (${RADIOS[RADIOS.indexOf(S.radius) + 1]} km)</button>` : "") +
           (S.query.cat ? "" : `<p class="svc-fine">Prueben con otras palabras o elijan una de las ideas de búsqueda.</p>`);
       } else {
-        msg = `<p><b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(queryLabel(S.query))} a menos de ${S.radius} km${S.filters.size ? `. Con los filtros de accesibilidad: <b>${list.length}</b>` : ""}. Del más cercano al más lejano.</p>`;
+        msg = `<p><b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(queryLabel(S.query))} a menos de ${S.radius} km${S.filters.size && !sinCoincidencias ? `. Con los filtros de accesibilidad: <b>${filtrados.length}</b>` : ""}. Del más cercano al más lejano.</p>`;
       }
     } else {
       msg = !S.query && !S.origin ? `<p>Escriban <b>qué buscan</b> y <b>dónde están</b>, y aquí aparecerá la lista de lugares.</p>`
@@ -645,13 +663,15 @@
         return `${a.label.toLowerCase()}: ${n ? `${n} de ${base.length} lo tienen registrado` : "ninguno lo tiene registrado"}`;
       });
       msg += `<p class="svc-fine">Dato registrado · ${notes.map(esc).join(" · ")}.</p>`;
-      if (!list.length) msg += `<button type="button" class="btn-soft btn-sm" data-clear-filters>Quitar filtros</button>`;
+      if (sinCoincidencias) msg += `<p class="svc-nofilter">Ningún lugar tiene registrado ese dato de accesibilidad, así que les mostramos <b>todos</b> los lugares encontrados. Llamen para preguntar.</p><button type="button" class="btn-soft btn-sm" data-clear-filters>Quitar filtros</button>`;
     }
     status.innerHTML = msg;
 
     const savedIds = new Set(S.saved.map((p) => p.id));
-    $("#svcList", root).innerHTML = visible.map((p) => row(p, savedIds.has(p.id))).join("");
+    $("#svcList", root).innerHTML = visible.map((p, i) => row(p, i + 1, savedIds.has(p.id))).join("");
     $("#svcMore", root).innerHTML = list.length > visible.length ? `<button type="button" class="btn btn-secondary" data-more>Ver más lugares (${list.length - visible.length})</button>` : "";
+    S.visible = visible;
+    drawMarkers(visible, savedIds, fit);
     fillAddresses(visible);
   }
 
@@ -666,10 +686,12 @@
     return `<span class="muted">Dirección no registrada</span>`;
   }
 
-  function row(p, saved) {
+  function row(p, n, saved) {
+    const enRuta = S.route && S.route.id === p.id;
     return `
-      <li class="place ${saved ? "saved" : ""}" data-id="${esc(p.id)}">
+      <li class="place ${saved ? "saved" : ""} ${enRuta ? "routed" : ""}" data-id="${esc(p.id)}">
         <div class="place-top">
+          <button type="button" class="place-n" data-focus="${esc(p.id)}" aria-label="Ver en el mapa">${n}</button>
           <div class="place-main">
             <h3>${p.name ? esc(p.name) : `${esc(p.tipo)} <small>(sin nombre registrado)</small>`}</h3>
             <p class="place-addr" data-addr-for="${esc(p.id)}">${addrHtml(p)}</p>
@@ -679,10 +701,194 @@
         <span class="place-type">${esc(p.tipo)}</span>
         ${p.acc && p.acc.length ? `<ul class="place-acc" aria-label="Accesibilidad registrada">${p.acc.map((a) => `<li class="${a.ok ? "ok" : a.lim ? "lim" : "no"}">${a.ok ? "✓" : a.lim ? "◐" : "✕"} ${esc(a.txt)}</li>`).join("")}</ul>` : ""}
         <div class="place-actions">
-          <a class="link-btn" href="${rutaUrl(p)}" target="_blank" rel="noopener">Cómo llegar</a>
+          <button type="button" class="pill-slate" data-route="${esc(p.id)}">${enRuta ? "Ruta en el mapa ✓" : "Cómo llegar"}</button>
           <button type="button" class="save-btn ${saved ? "on" : ""}" data-save="${esc(p.id)}" aria-pressed="${saved}">${saved ? "★ Guardado" : "☆ Guardar"}</button>
         </div>
       </li>`;
+  }
+
+  /* =========================================================
+     MAPA (Leaflet) Y RUTAS (OSRM)
+     ========================================================= */
+  let map = null, markersLayer = null, originLayer = null, routeLayer = null, markers = {};
+
+  function initMap() {
+    const el = $("#svcMap", root);
+    if (map) { map.remove(); map = null; }
+    markers = {};
+    if (!window.L) { el.innerHTML = `<div class="svc-map-off">No se pudo cargar el mapa. La lista de lugares sigue funcionando.</div>`; return; }
+    const c = S.origin || CENTRO_INICIAL;
+    map = L.map(el, { scrollWheelZoom: false }).setView([c.lat, c.lon], S.origin ? 13 : CENTRO_INICIAL.zoom);
+    L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(map);
+    routeLayer = L.layerGroup().addTo(map);
+    originLayer = L.layerGroup().addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+    setTimeout(() => map && map.invalidateSize(), 120);
+  }
+
+  function drawMarkers(list, savedIds, fit) {
+    if (!map) return;
+    markersLayer.clearLayers(); originLayer.clearLayers(); markers = {};
+    let circle = null;
+    if (S.origin) {
+      L.marker([S.origin.lat, S.origin.lon], {
+        icon: L.divIcon({ className: "svc-me", html: "<span></span>", iconSize: [24, 24], iconAnchor: [12, 12] }),
+        title: "Punto de partida", keyboard: false, zIndexOffset: 1000,
+      }).bindTooltip("Punto de partida").addTo(originLayer);
+      if (S.tab === "buscar") circle = L.circle([S.origin.lat, S.origin.lon], { radius: S.radius * 1000, color: "#007380", weight: 2, dashArray: "6 6", fillColor: "#21BBBB", fillOpacity: 0.06, interactive: false }).addTo(originLayer);
+    }
+    list.forEach((p, i) => {
+      const enRuta = S.route && S.route.id === p.id;
+      const m = L.marker([p.lat, p.lon], {
+        icon: L.divIcon({ className: "svc-pin" + (savedIds.has(p.id) ? " saved" : "") + (enRuta ? " routed" : ""), html: `<span>${i + 1}</span>`, iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -14] }),
+        title: p.name || p.tipo, riseOnHover: true, zIndexOffset: enRuta ? 900 : 0,
+      });
+      m.bindPopup(() => `<div class="svc-info"><b>${esc(p.name || p.tipo)}</b><br>${esc(p.addr || p.tipo)}${p.dist != null ? "<br>" + fDist(p.dist) : ""}<br>
+        <button type="button" class="link-btn" data-route="${esc(p.id)}">Cómo llegar</button> · <button type="button" class="link-btn" data-goto="${esc(p.id)}">Ver en la lista</button></div>`);
+      m.addTo(markersLayer);
+      markers[p.id] = m;
+    });
+    if (!fit || (S.route && S.route.data)) return; // si hay ruta, el mapa se queda enfocado en ella
+    map.invalidateSize(); // por si el mapa cambió de tamaño (pantalla girada, ventana)
+    if (circle) map.fitBounds(circle.getBounds(), { padding: [10, 10] });
+    else if (list.length) {
+      const b = L.latLngBounds(list.map((p) => [p.lat, p.lon]));
+      if (S.origin) b.extend([S.origin.lat, S.origin.lon]);
+      map.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
+    } else if (S.origin) map.setView([S.origin.lat, S.origin.lon], 13);
+  }
+
+  /* ---------- rutas ---------- */
+  const fDur = (s) => { const m = Math.max(1, Math.round(s / 60)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? (m % 60) + " min" : ""}`.trim(); };
+  const GIRO = { left: "a la izquierda", right: "a la derecha", "slight left": "ligeramente a la izquierda", "slight right": "ligeramente a la derecha", "sharp left": "bien cerrado a la izquierda", "sharp right": "bien cerrado a la derecha", straight: "derecho", uturn: "en U" };
+
+  // Convierte un paso de OSRM en una instrucción en español sencillo
+  function instruccion(s) {
+    const m = s.maneuver || {}, g = GIRO[m.modifier] || "", calle = s.name || "";
+    switch (m.type) {
+      case "depart": return calle ? `Sal por ${calle}` : "Empieza el camino";
+      case "arrive": return "Llegas a tu destino";
+      case "roundabout": case "rotary": case "roundabout turn":
+        return `En la glorieta, toma la ${m.exit ? m.exit + "ª " : ""}salida${calle ? " hacia " + calle : ""}`;
+      case "merge": case "on ramp": return `Incorpórate${calle ? " a " + calle : ""}`;
+      case "off ramp": return `Toma la salida${g ? " " + g : ""}${calle ? " hacia " + calle : ""}`;
+      case "turn": case "end of road": case "fork":
+        if (m.modifier === "straight") return `Sigue derecho${calle ? " por " + calle : ""}`;
+        if (m.modifier === "uturn") return `Da vuelta en U${calle ? " en " + calle : ""}`;
+        return `Gira ${g}${calle ? " en " + calle : ""}`;
+      default: return `Continúa${g && m.modifier !== "straight" ? " " + g : ""}${calle ? " por " + calle : ""}`;
+    }
+  }
+
+  async function fetchRoute(o, p, modo) {
+    let lastErr = null;
+    for (const base of ROUTERS[modo]) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      try {
+        const url = `${base}${o.lon.toFixed(6)},${o.lat.toFixed(6)};${p.lon.toFixed(6)},${p.lat.toFixed(6)}?overview=full&geometries=geojson&steps=true`;
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const j = await res.json();
+        if (j.code !== "Ok" || !j.routes || !j.routes.length) throw new Error(j.code || "Sin ruta");
+        const r = j.routes[0];
+        return {
+          distance: r.distance, duration: r.duration,
+          line: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+          steps: (r.legs || []).flatMap((l) => l.steps || []).filter((s) => s.distance > 0 || (s.maneuver && s.maneuver.type === "arrive")),
+        };
+      } catch (ex) {
+        lastErr = ex;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastErr || new Error("Sin ruta");
+  }
+
+  let routeSeq = 0;
+  async function showRoute(id, modo) {
+    const p = (S.visible || []).find((x) => x.id === id) || S.results.find((x) => x.id === id) || S.saved.find((x) => x.id === id);
+    if (!p) return;
+    modo = modo || (S.route && S.route.modo) || "auto";
+    if (!S.origin) {
+      S.route = { id, modo, place: p, status: "sin-origen" };
+      drawRoute(); scrollToMap();
+      return;
+    }
+    const my = ++routeSeq;
+    S.route = { id, modo, place: p, status: "loading" };
+    drawRoute(); refreshRows(); scrollToMap();
+    if (map && markers[id]) markers[id].closePopup();
+    try {
+      const data = await fetchRoute(S.origin, p, modo);
+      if (my !== routeSeq) return;
+      S.route = { id, modo, place: p, status: "done", data };
+    } catch (_) {
+      if (my !== routeSeq) return;
+      S.route = { id, modo, place: p, status: "error" };
+    }
+    drawRoute(); refreshRows();
+  }
+
+  function clearRoute() {
+    routeSeq++;
+    S.route = null;
+    if (routeLayer) routeLayer.clearLayers();
+    drawRoute();
+  }
+
+  // vuelve a dibujar fichas y marcadores para marcar el destino de la ruta
+  function refreshRows() {
+    drawResults(false);
+  }
+
+  function scrollToMap() {
+    const el = $("#svcRoute", root);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function drawRoute() {
+    const box = $("#svcRoute", root);
+    if (!box) return;
+    if (routeLayer) routeLayer.clearLayers();
+    const r = S.route;
+    if (!r) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    const nombre = esc(r.place.name || r.place.tipo);
+    const modos = `<div class="seg svc-modo" role="radiogroup" aria-label="Cómo van a ir">
+        <button type="button" class="seg-btn ${r.modo === "auto" ? "on" : ""}" data-modo="auto" role="radio" aria-checked="${r.modo === "auto"}">En auto</button>
+        <button type="button" class="seg-btn ${r.modo === "pie" ? "on" : ""}" data-modo="pie" role="radio" aria-checked="${r.modo === "pie"}">A pie</button>
+      </div>`;
+    const head = `<div class="row-between"><span class="svc-k">Cómo llegar</span><button type="button" class="link-btn" data-route-close>Cerrar ruta</button></div>
+      <p class="svc-route-to">A <b>${nombre}</b>${r.place.addr ? `<br><span class="small">${esc(r.place.addr)}</span>` : ""}</p>`;
+    const externo = `<a class="place-alt" href="${rutaUrl(r.place)}" target="_blank" rel="noopener">Abrir la ruta en Google Maps</a>`;
+
+    if (r.status === "sin-origen") {
+      box.innerHTML = head + `<p>Para trazar la ruta, primero digan <b>de dónde salen</b>: usen su ubicación o escriban su dirección (paso 2).</p>${externo}`;
+      return;
+    }
+    if (r.status === "loading") {
+      box.innerHTML = head + modos + `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Calculando la ruta…</p>`;
+      return;
+    }
+    if (r.status === "error") {
+      box.innerHTML = head + modos + `<p>No pudimos calcular la ruta en este momento.</p><button type="button" class="btn-soft btn-sm" data-route="${esc(r.id)}">Intentar de nuevo</button> ${externo}`;
+      return;
+    }
+    const d = r.data;
+    box.innerHTML = head + modos + `
+      <p class="svc-route-sum"><b>${fDur(d.duration)}</b> · ${fDist(d.distance / 1000)} ${r.modo === "auto" ? "en auto" : "a pie"} <span class="svc-fine">(tiempo aproximado, sin tráfico)</span></p>
+      <details class="svc-steps"><summary>Ver indicaciones paso a paso (${d.steps.length})</summary>
+        <ol>${d.steps.map((s) => `<li>${esc(instruccion(s))}${s.distance > 0 ? ` <span class="svc-fine">· ${fDist(s.distance / 1000)}</span>` : ""}</li>`).join("")}</ol>
+      </details>
+      ${externo}`;
+    if (map) {
+      L.polyline(d.line, { color: "#FFFFFF", weight: 9, opacity: 0.9, interactive: false }).addTo(routeLayer);
+      const line = L.polyline(d.line, { color: "#FF644F", weight: 5, opacity: 0.95, interactive: false }).addTo(routeLayer);
+      map.invalidateSize();
+      map.fitBounds(line.getBounds(), { padding: [30, 30] });
+    }
   }
 
   // Completa, uno por uno, las direcciones que no están registradas
@@ -733,10 +939,13 @@
   }
 
   function setOrigin(o) {
+    const pendiente = S.route && S.route.status === "sin-origen" ? S.route : null;
     S.origin = o; S.candidates = []; S.results = []; S.status = "idle";
+    clearRoute();
     drawOrigin();
     if (S.query) search();
-    else drawResults();
+    else drawResults(true);
+    if (pendiente) showRoute(pendiente.id, pendiente.modo); // ruta que esperaba el punto de partida
   }
 
   async function search() {
@@ -746,6 +955,7 @@
     const qKey = S.query.cat ? "c:" + S.query.cat : "t:" + norm(S.query.text);
     const key = [qKey, S.origin.lat.toFixed(4), S.origin.lon.toFixed(4), S.radius].join("|");
     S.status = "loading"; S.shown = PAGE; S.tab = "buscar";
+    if (S.route && S.route.status !== "sin-origen") clearRoute();
     drawTabs(); drawResults();
     const aviso = (txt) => {
       if (my !== seq) return;
@@ -774,7 +984,7 @@
       S.error = !navigator.onLine ? "Revisen su conexión a internet."
         : "Los servidores de OpenStreetMap están muy ocupados. Intenten de nuevo en un minuto.";
     }
-    drawResults();
+    drawResults(true);
     if (S.status === "done" && window.innerWidth < 900) $("#svcStatus", root).scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -847,11 +1057,25 @@
     drawResults();
   }
 
+  function focusPlace(id) {
+    const m = markers[id];
+    if (!m || !map) return;
+    $("#svcMap", root).scrollIntoView({ behavior: "smooth", block: "center" });
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 16));
+    m.openPopup();
+  }
+  function gotoCard(id) {
+    const el = $(`.place[data-id="${CSS.escape(id)}"]`, root);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  }
+
   function bind() {
     root.addEventListener("click", (e) => {
       const t = e.target;
       let b;
-      if ((b = t.closest("[data-tab]"))) { S.tab = b.dataset.tab; drawTabs(); drawResults(); if (S.tab === "guardados") loadSaved(); return; }
+      if ((b = t.closest("[data-tab]"))) { S.tab = b.dataset.tab; drawTabs(); drawResults(true); if (S.tab === "guardados") loadSaved(); return; }
       if ((b = t.closest("[data-etapa]"))) {
         lsSet(ETAPA_KEY, { who: S.patient ? S.patient.codigo : "", etapa: b.dataset.etapa });
         S.etapa = { key: b.dataset.etapa, fuente: "manual" }; S.pickEtapa = false; drawEtapa(); return;
@@ -882,6 +1106,11 @@
       if (t.closest("[data-retry]")) { cache.clear(); search(); return; }
       if (t.closest("[data-more]")) { S.shown += PAGE; drawResults(); return; }
       if ((b = t.closest("[data-save]"))) { toggleSave(b.dataset.save, b); return; }
+      if ((b = t.closest("[data-route]"))) { showRoute(b.dataset.route); return; }
+      if ((b = t.closest("[data-modo]"))) { if (S.route && S.route.modo !== b.dataset.modo) showRoute(S.route.id, b.dataset.modo); return; }
+      if (t.closest("[data-route-close]")) { clearRoute(); refreshRows(); return; }
+      if ((b = t.closest("[data-focus]"))) { focusPlace(b.dataset.focus); return; }
+      if ((b = t.closest("[data-goto]"))) { if (map) map.closePopup(); gotoCard(b.dataset.goto); return; }
     });
     $("#svcAskForm", root).addEventListener("submit", (e) => { e.preventDefault(); askText($("#svcQ", root).value); });
     $("#svcAddrForm", root).addEventListener("submit", (e) => { e.preventDefault(); searchAddress($("#svcAddr", root).value); });
