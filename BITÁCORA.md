@@ -75,7 +75,9 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
    
    **Estado previo:** usuario ww-2048-17@paciente.wellwell.app creado en Supabase Authentication, sin filas en perfiles ni pacientes.
       
-   **Output real:** ! Tu ID existe pero aún no tiene datos asignados: <img width="563" height="528" alt="image" src="https://github.com/user-attachments/assets/17b5d1b3-d7ac-46fa-bb66-c8bb98387ccb" />
+   **Output real:** ! Tu ID existe pero aún no tiene datos asignados:
+   
+   <img width="400" height="380" alt="image" src="https://github.com/user-attachments/assets/17b5d1b3-d7ac-46fa-bb66-c8bb98387ccb" />
 
 
 **CASO PRUEBA B**
@@ -90,7 +92,7 @@ $$;
 
    **Output real:** No da ningún mensaje, solo dirige a su sesión e información dentro de la app.
 
-**Mi decisión:** ACEPTAR. La IA me dió exactamente el código para copiar en SQL Editor el Supabase para crear el usuario de prueba con su contraseña y luego al no contar con información sobre ese usuario, Claude Code me dio el código necesario para copiarlo en SQL Editor y establecer la información de nuestro usuario de prueba: <img width="1239" height="502" alt="image" src="https://github.com/user-attachments/assets/ca035344-fd8c-4f71-93fa-bef008eae98c" />
+**Mi decisión:** ACEPTAR. La IA me dió exactamente el código para copiar en SQL Editor el Supabase para crear el usuario de prueba con su contraseña y luego al no contar con información sobre ese usuario, Claude Code me dio el código necesario para copiarlo en SQL Editor y establecer la información de nuestro usuario de prueba: <img width="800" height="402" alt="image" src="https://github.com/user-attachments/assets/ca035344-fd8c-4f71-93fa-bef008eae98c" />
 
 
 **Documentación del chatbot "Lupita"**
