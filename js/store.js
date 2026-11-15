@@ -7,8 +7,8 @@
      los IDs de prueba, usa datos locales del navegador.
    ========================================================= */
 (function () {
-  const SUPABASE_URL = "https://pukaxcxekcbuaedygabv.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_UhcvaooDDpT9HqPuerb21Q_H91TNgN_";
+  const SUPABASE_URL = "https://xkfoiggivoxiwwkzcpbe.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_4v_AY40WLUYn78Bn1dETlQ_PJnc5bEK";
   const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
   // ID → correo interno de Supabase Auth (nadie lo escribe, solo el ID)
