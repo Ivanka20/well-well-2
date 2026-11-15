@@ -1,1 +1,4 @@
-l
+BITÁCORA DE PROMPTS
+
+*Información del proyecto:*
+El Directorio de apoyo cercano es una nueva funcionalidad de Well Well diseñada para ayudar a los pacientes y sus familiares a encontrar servicios médicos y de rehabilitación después del alta hospitalaria. Mediante la integración con OpenStreetMap y Overpass API, permite buscar hospitales, clínicas, centros de fisioterapia y farmacias según la ubicación del usuario, la categoría del servicio y la distancia deseada. La aplicación obtiene información de establecimientos reales, calcula su proximidad y presenta los resultados en un mapa interactivo y una lista organizada con datos de contacto y opciones para llegar al lugar. Su objetivo es facilitar la continuidad de la recuperación y reducir las dificultades que enfrentan las familias al buscar servicios de apoyo fuera del hospital.
