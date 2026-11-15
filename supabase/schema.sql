@@ -262,3 +262,60 @@ begin
   begin alter publication supabase_realtime add table public.animo; exception when duplicate_object then null; end;
   begin alter publication supabase_realtime add table public.avisos; exception when duplicate_object then null; end;
 end $$;
+
+-- =========================================================
+-- CERCA DE MÍ · servicios después del alta
+-- =========================================================
+
+-- Etapa de recuperación (información NO sensible: no dice el diagnóstico).
+-- Si se deja vacía, la app la calcula con el paso "Alta" de la ruta.
+alter table public.pacientes add column if not exists etapa_recuperacion text
+  check (etapa_recuperacion in ('preparando_alta', 'primeras_semanas', 'rehabilitacion', 'seguimiento'));
+
+-- Tipos de servicio que el equipo de salud sugiere buscar
+alter table public.pacientes add column if not exists apoyos_sugeridos text[] not null default '{}'
+  check (apoyos_sugeridos <@ array['hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada']::text[]);
+
+-- Mis lugares guardados (lugares de Google Maps · Places API)
+-- Por las reglas de Google solo se guarda el place_id (se puede guardar
+-- sin límite de tiempo); nombre, dirección, etc. se piden de nuevo a Places API.
+create table if not exists public.lugares_guardados (
+  id uuid primary key default gen_random_uuid(),
+  paciente_id uuid not null references public.pacientes (id) on delete cascade,
+  place_id text not null check (char_length(place_id) <= 400),
+  categoria text check (categoria in ('hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada')),
+  created_at timestamptz not null default now(),
+  unique (paciente_id, place_id)
+);
+
+-- Si ya habías creado la versión anterior (OpenStreetMap), se convierte aquí.
+-- Las filas viejas (IDs tipo "node/123") no se borran; la app simplemente las ignora.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'lugares_guardados' and column_name = 'osm_id') then
+    alter table public.lugares_guardados drop constraint if exists lugares_guardados_osm_id_check;
+    alter table public.lugares_guardados drop constraint if exists lugares_guardados_paciente_id_osm_id_key;
+    alter table public.lugares_guardados rename column osm_id to place_id;
+    alter table public.lugares_guardados add constraint lugares_guardados_place_id_check check (char_length(place_id) <= 400);
+    alter table public.lugares_guardados add constraint lugares_guardados_paciente_id_place_id_key unique (paciente_id, place_id);
+    alter table public.lugares_guardados drop column if exists datos;
+    alter table public.lugares_guardados add column if not exists categoria text
+      check (categoria in ('hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada'));
+  end if;
+end $$;
+create index if not exists idx_lugares_pac on public.lugares_guardados (paciente_id, created_at);
+alter table public.lugares_guardados enable row level security;
+
+drop policy if exists "lugares: ver" on public.lugares_guardados;
+create policy "lugares: ver" on public.lugares_guardados for select to authenticated
+  using (paciente_id = public.mi_paciente_id());
+drop policy if exists "lugares: guardar" on public.lugares_guardados;
+create policy "lugares: guardar" on public.lugares_guardados for insert to authenticated
+  with check (paciente_id = public.mi_paciente_id());
+drop policy if exists "lugares: actualizar" on public.lugares_guardados;
+create policy "lugares: actualizar" on public.lugares_guardados for update to authenticated
+  using (paciente_id = public.mi_paciente_id()) with check (paciente_id = public.mi_paciente_id());
+drop policy if exists "lugares: quitar" on public.lugares_guardados;
+create policy "lugares: quitar" on public.lugares_guardados for delete to authenticated
+  using (paciente_id = public.mi_paciente_id());

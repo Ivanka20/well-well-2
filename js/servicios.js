@@ -4,13 +4,14 @@
    después del alta: hospitales, rehabilitación, fisioterapia,
    farmacias, laboratorios y atención especializada.
 
-   Datos:  OpenStreetMap
-           - Overpass API  → establecimientos reales cercanos
-           - Nominatim     → convertir una dirección en coordenadas
-   Mapa:   Leaflet + mosaicos de OpenStreetMap
+   Datos y mapa: Google Maps Platform
+     - Places API (New)  → Place.searchNearby / Place.searchByText
+     - Maps JavaScript API → mapa, marcadores y círculo del radio
+   La clave se lee de /api/maps-key (variable de entorno en Vercel)
+   o, en tu computadora, de js/config.js (ver js/config.example.js).
 
-   Uso:    Servicios.mount(contenedor, { patient, cat, back })
-           Servicios.detect("¿dónde hay fisioterapia?")  (para Lupita)
+   Uso:  Servicios.mount(contenedor, { patient, cat, back })
+         Servicios.detect("¿dónde hay fisioterapia?")  (para Lupita)
    ========================================================= */
 (function () {
   "use strict";
@@ -23,59 +24,56 @@
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
   const toast = (m) => (window.wwToast ? window.wwToast(m) : null);
 
-  /* ---------- servicios externos (OpenStreetMap) ---------- */
-  // Si un servidor de Overpass está saturado se intenta con el siguiente
-  const OVERPASS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  ];
-  const NOMINATIM = "https://nominatim.openstreetmap.org/search";
-  const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
   const CENTRO_INICIAL = { lat: 23.6345, lon: -102.5528, zoom: 4 }; // México
-
   const RADIOS = [1, 5, 10, 20];
   const PAGE = 20;
   const PREFS_KEY = "ww-svc-prefs";
   const ETAPA_KEY = "ww-svc-etapa";
   const LOCAL_SAVED_KEY = "ww-lugares-v1";
 
+  // Campos que pedimos a Places API. Cada campo influye en el costo
+  // (teléfono, web, horario y accesibilidad son de nivel "Enterprise").
+  const FIELDS = [
+    "id", "displayName", "formattedAddress", "location", "primaryType", "primaryTypeDisplayName",
+    "nationalPhoneNumber", "internationalPhoneNumber", "websiteURI", "regularOpeningHours",
+    "accessibilityOptions", "googleMapsURI", "businessStatus",
+  ];
+
   /* =========================================================
-     A. CATEGORÍAS · cada una se traduce a etiquetas de OSM
-     (los filtros con "name" buscan por nombre porque muchos
-     lugares no tienen la etiqueta exacta)
+     A. CATEGORÍAS → tipos de Places API (Tabla A) o texto
+     "nearby": Place.searchNearby con includedTypes (máx. 20, ordenados por distancia)
+     "text":   Place.searchByText dentro del área (para lo que no tiene tipo propio)
      ========================================================= */
   const CATS = {
     hospitales: {
       label: "Hospitales y centros médicos", short: "hospitales y centros médicos", glyph: "✚",
       tip: "Sirven para revisiones médicas o si algo no se ve bien.",
-      q: ['["amenity"="hospital"]', '["healthcare"="hospital"]', '["amenity"="clinic"]', '["healthcare"="clinic"]', '["healthcare"="centre"]', '["amenity"="doctors"]', '["healthcare"="doctor"]'],
+      nearby: ["hospital", "doctor"],
     },
     rehabilitacion: {
       label: "Clínicas de rehabilitación", short: "clínicas de rehabilitación", glyph: "↻",
       tip: "Ahí pueden continuar las sesiones para recuperar fuerza y movimiento.",
-      q: ['["healthcare"="rehabilitation"]', '["healthcare:speciality"~"rehabilitation|physical_medicine"]', '["name"~"rehabilit",i]'],
+      text: "centro de rehabilitación física",
     },
     fisioterapia: {
       label: "Fisioterapia", short: "centros de fisioterapia", glyph: "≈",
       tip: "Ahí guían los ejercicios para mover el cuerpo sin lastimarse.",
-      q: ['["healthcare"="physiotherapist"]', '["healthcare:speciality"~"physiotherapy"]', '["name"~"fisioter|physio",i]'],
+      nearby: ["physiotherapist"], text: "fisioterapia",
     },
     farmacias: {
       label: "Farmacias", short: "farmacias", glyph: "℞",
       tip: "Para surtir recetas y comprar material de curación.",
-      q: ['["amenity"="pharmacy"]', '["healthcare"="pharmacy"]'],
+      nearby: ["pharmacy", "drugstore"],
     },
     laboratorios: {
       label: "Laboratorios médicos", short: "laboratorios médicos", glyph: "◉",
       tip: "Para los estudios de sangre u orina que pida su médico.",
-      q: ['["healthcare"="laboratory"]', '["healthcare"="sample_collection"]', '["name"~"laboratorio cl[ií]nico|laboratorios? m[eé]dicos?|an[aá]lisis cl[ií]nicos|laboratorio de an[aá]lisis",i]'],
+      nearby: ["medical_lab"], text: "laboratorio de análisis clínicos",
     },
     especializada: {
       label: "Atención especializada", short: "centros de atención especializada", glyph: "★",
       tip: "Especialistas y terapias como la ocupacional o de lenguaje.",
-      q: ['["healthcare"~"^(occupational_therapist|speech_therapist|psychotherapist|audiologist|optometrist|podiatrist|dialysis|counselling)$"]', '["healthcare:speciality"]["healthcare:speciality"!~"^(general|general_practice|family_medicine)$"]'],
+      text: "clínica de especialidades médicas",
     },
   };
   const CAT_ORDER = ["hospitales", "rehabilitacion", "fisioterapia", "farmacias", "laboratorios", "especializada"];
@@ -123,90 +121,33 @@
   }
 
   /* =========================================================
-     B. Filtro de accesibilidad: SOLO lo que está registrado
+     B. Accesibilidad: SOLO lo que Google tiene registrado
+     (accessibilityOptions). Google no registra elevadores.
      ========================================================= */
   const ACCESOS = [
     { k: "entrada", label: "Entrada para silla de ruedas" },
     { k: "estacionamiento", label: "Estacionamiento accesible" },
-    { k: "elevador", label: "Elevador" },
     { k: "banos", label: "Baños adaptados" },
   ];
-  const first = (t, keys) => { for (const k of keys) if (t[k] != null && t[k] !== "") return t[k]; return null; };
-  function siNo(v) {
-    if (v == null) return null;
-    v = norm(v).trim();
-    if (/^(yes|designated|true|si)$/.test(v) || /^[1-9]\d*$/.test(v)) return "si";
-    if (v === "limited") return "limitado";
-    if (/^(no|false|0)$/.test(v)) return "no";
-    return null; // valor desconocido: no lo mostramos
-  }
-  function accesibilidad(t) {
+  function accesibilidad(a) {
+    a = a || {};
     const out = [];
-    const ent = siNo(t.wheelchair);
-    if (ent) out.push({ k: "entrada", ok: ent === "si", txt: ent === "si" ? "Entrada accesible para silla de ruedas" : ent === "limitado" ? "Entrada con accesibilidad limitada" : "Entrada sin acceso para silla de ruedas" });
-    const capRaw = first(t, ["capacity:disabled", "parking:disabled", "disabled_parking"]);
-    const est = siNo(capRaw);
-    if (est) out.push({ k: "estacionamiento", ok: est === "si", txt: est === "si" ? "Estacionamiento accesible" + (/^\d+$/.test(capRaw) ? ` (${capRaw} ${capRaw === "1" ? "lugar" : "lugares"})` : "") : est === "limitado" ? "Estacionamiento accesible limitado" : "Sin estacionamiento accesible" });
-    const ele = siNo(first(t, ["elevator", "building:elevator", "lift"]));
-    if (ele) out.push({ k: "elevador", ok: ele === "si", txt: ele === "si" ? "Tiene elevador" : ele === "limitado" ? "Elevador con acceso limitado" : "Sin elevador" });
-    const ban = siNo(first(t, ["toilets:wheelchair", "toilets:disability"]));
-    if (ban) out.push({ k: "banos", ok: ban === "si", txt: ban === "si" ? "Baños adaptados" : ban === "limitado" ? "Baños con adaptación limitada" : "Sin baños adaptados" });
+    const add = (k, v, si, no) => { if (typeof v === "boolean") out.push({ k, ok: v, txt: v ? si : no }); };
+    add("entrada", a.hasWheelchairAccessibleEntrance, "Entrada accesible para silla de ruedas", "Entrada sin acceso para silla de ruedas");
+    add("estacionamiento", a.hasWheelchairAccessibleParking, "Estacionamiento accesible", "Sin estacionamiento accesible");
+    add("banos", a.hasWheelchairAccessibleRestroom, "Baños adaptados", "Sin baños adaptados");
+    add("asientos", a.hasWheelchairAccessibleSeating, "Asientos accesibles", "Sin asientos accesibles");
     return out;
   }
 
   /* =========================================================
-     C. Fichas: convertir datos de OSM a algo legible
+     C. Fichas
      ========================================================= */
-  const ESPECIALIDAD = {
-    paediatrics: "Pediatría", pediatrics: "Pediatría", orthopaedics: "Ortopedia", orthopedics: "Ortopedia", cardiology: "Cardiología",
-    dermatology: "Dermatología", neurology: "Neurología", ophthalmology: "Oftalmología", gynaecology: "Ginecología", obstetrics: "Obstetricia",
-    physiotherapy: "Fisioterapia", rehabilitation: "Rehabilitación", physical_medicine: "Medicina física", psychiatry: "Psiquiatría",
-    psychology: "Psicología", geriatrics: "Geriatría", trauma: "Traumatología", traumatology: "Traumatología", plastic_surgery: "Cirugía plástica",
-    dentistry: "Odontología", internal: "Medicina interna", oncology: "Oncología", nephrology: "Nefrología", otolaryngology: "Otorrinolaringología",
-    urology: "Urología", general: "Medicina general", surgery: "Cirugía", radiology: "Radiología", endocrinology: "Endocrinología",
-    gastroenterology: "Gastroenterología", pulmonology: "Neumología", nutrition: "Nutrición", speech_therapy: "Terapia de lenguaje",
-    occupational_therapy: "Terapia ocupacional", allergology: "Alergología", rheumatology: "Reumatología", vascular_surgery: "Cirugía vascular",
+  const TIPOS = {
+    hospital: "Hospital", doctor: "Consultorio médico", pharmacy: "Farmacia", drugstore: "Farmacia",
+    physiotherapist: "Fisioterapia", medical_lab: "Laboratorio", dentist: "Dentista", dental_clinic: "Clínica dental",
   };
-  const espLabel = (v) => String(v || "").split(";").map((x) => ESPECIALIDAD[x.trim()] || x.trim().replace(/_/g, " ")).filter(Boolean).slice(0, 2).join(", ");
-
-  function tipoDe(t, cat) {
-    const h = t.healthcare, a = t.amenity, sp = t["healthcare:speciality"];
-    if (a === "hospital" || h === "hospital") return "Hospital";
-    if (a === "pharmacy" || h === "pharmacy") return "Farmacia";
-    if (h === "physiotherapist") return "Fisioterapia";
-    if (h === "rehabilitation") return "Rehabilitación";
-    if (h === "laboratory" || h === "sample_collection") return "Laboratorio";
-    const extra = { occupational_therapist: "Terapia ocupacional", speech_therapist: "Terapia de lenguaje", psychotherapist: "Psicoterapia", audiologist: "Audiología", optometrist: "Optometría", podiatrist: "Podología", dialysis: "Diálisis", counselling: "Orientación psicológica" };
-    if (extra[h]) return extra[h];
-    if (a === "clinic" || h === "clinic" || h === "centre") return sp ? "Clínica · " + espLabel(sp) : "Clínica o centro de salud";
-    if (a === "doctors" || h === "doctor") return sp ? "Consultorio · " + espLabel(sp) : "Consultorio médico";
-    if (sp) return espLabel(sp);
-    return { rehabilitacion: "Rehabilitación", fisioterapia: "Fisioterapia", laboratorios: "Laboratorio", farmacias: "Farmacia", hospitales: "Centro médico", especializada: "Atención especializada" }[cat] || "Servicio de salud";
-  }
-
-  function direccion(t) {
-    if (t["addr:full"]) return t["addr:full"];
-    const calle = [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" ");
-    return [calle, first(t, ["addr:suburb", "addr:neighbourhood", "addr:quarter"]), first(t, ["addr:city", "addr:municipality", "addr:district"]), t["addr:postcode"] ? "C.P. " + t["addr:postcode"] : ""]
-      .filter(Boolean).join(", ");
-  }
-  function telefono(t) {
-    const v = first(t, ["phone", "contact:phone", "contact:mobile", "phone:mobile"]);
-    return v ? String(v).split(/[;,]/)[0].trim() : "";
-  }
-  function web(t) {
-    let v = first(t, ["website", "contact:website", "url"]);
-    if (!v) return "";
-    v = String(v).split(";")[0].trim();
-    if (!/^https?:\/\//i.test(v)) v = "https://" + v;
-    try { const u = new URL(v); return /^https?:$/.test(u.protocol) ? u.href : ""; } catch (_) { return ""; }
-  }
-  function horario(v) {
-    if (!v) return "";
-    if (/^24\/7$/.test(v.trim())) return "Abierto las 24 horas";
-    const D = { Mo: "Lu", Tu: "Ma", We: "Mi", Th: "Ju", Fr: "Vi", Sa: "Sá", Su: "Do", PH: "Festivos" };
-    return v.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, (m) => D[m]).replace(/\boff\b/g, "cerrado").replace(/;\s*/g, " · ");
-  }
+  const DEFAULT_TIPO = { rehabilitacion: "Rehabilitación", fisioterapia: "Fisioterapia", laboratorios: "Laboratorio", farmacias: "Farmacia", hospitales: "Centro médico", especializada: "Atención especializada" };
 
   function km(a, b) {
     const R = 6371, rad = Math.PI / 180;
@@ -215,101 +156,148 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   const fDist = (d) => (d == null ? "" : d < 1 ? `${Math.max(10, Math.round((d * 1000) / 10) * 10)} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
+  const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (_) { return ""; } };
 
-  function toPlace(el, cat, origin) {
-    const t = el.tags || {};
-    const lat = el.lat != null ? el.lat : el.center && el.center.lat;
-    const lon = el.lon != null ? el.lon : el.center && el.center.lon;
-    if (lat == null || lon == null) return null;
+  function toPlace(pl, cat, origin) {
+    if (!pl || !pl.location) return null;
+    const lat = pl.location.lat(), lon = pl.location.lng();
+    const hours = (pl.regularOpeningHours && pl.regularOpeningHours.weekdayDescriptions) || [];
     return {
-      id: el.type + "/" + el.id,
-      name: t["name:es"] || t.name || t.brand || t.operator || "",
-      tipo: tipoDe(t, cat),
+      id: pl.id,
+      name: pl.displayName || "",
+      tipo: pl.primaryTypeDisplayName || TIPOS[pl.primaryType] || DEFAULT_TIPO[cat] || "Servicio de salud",
       cat, lat, lon,
-      addr: direccion(t),
-      phone: telefono(t),
-      website: web(t),
-      hours: horario(t.opening_hours),
-      acc: accesibilidad(t),
-      accNote: t["wheelchair:description:es"] || t["wheelchair:description"] || "",
+      addr: pl.formattedAddress || "",
+      phone: pl.nationalPhoneNumber || pl.internationalPhoneNumber || "",
+      website: safeUrl(pl.websiteURI || ""),
+      hours,
+      acc: accesibilidad(pl.accessibilityOptions),
+      gmaps: safeUrl(pl.googleMapsURI || ""),
+      closed: pl.businessStatus === "CLOSED_PERMANENTLY",
       dist: origin ? km(origin, { lat, lon }) : null,
     };
   }
 
-  // Un mismo lugar puede venir como punto y como edificio: nos quedamos con uno
-  function dedupe(list) {
-    const seen = new Map(), out = [];
-    list.sort((a, b) => a.dist - b.dist).forEach((p) => {
-      const key = norm(p.name);
-      if (key) {
-        const prev = seen.get(key) || [];
-        if (prev.some((q) => km(q, p) < 0.15)) return;
-        prev.push(p); seen.set(key, prev);
-      }
-      out.push(p);
-    });
-    return out;
-  }
+  /* =========================================================
+     Google Maps Platform: carga y consultas
+     ========================================================= */
+  let gmPromise = null;
+  let authFailed = false;
 
-  /* ---------- consultas ---------- */
-  function buildQuery(cat, o, radiusKm) {
-    const around = `(around:${Math.round(radiusKm * 1000)},${o.lat.toFixed(5)},${o.lon.toFixed(5)})`;
-    const parts = CATS[cat].q.map((sel) => `  ${sel.startsWith('["name"') ? "nw" : "nwr"}${sel}${around};`).join("\n");
-    return `[out:json][timeout:25];\n(\n${parts}\n);\nout center tags;`;
-  }
-
-  // Prueba cada servidor; si todos están ocupados, espera un poco y hace una segunda ronda
-  async function overpass(query, onTry) {
-    let lastErr = null;
-    const t0 = Date.now();
-    for (let ronda = 0; ronda < 2; ronda++) {
-      if (ronda) {
-        if (Date.now() - t0 > 30000) break; // ya esperamos bastante
-        await new Promise((r) => setTimeout(r, 4000));
-      }
-      for (let i = 0; i < OVERPASS.length; i++) {
-        if (onTry && (ronda || i)) onTry(ronda * OVERPASS.length + i);
-        try { return await overpassOnce(OVERPASS[i], query); } catch (ex) { lastErr = ex; }
-      }
-    }
-    throw lastErr || new Error("Sin respuesta");
-  }
-
-  async function overpassOnce(url, query) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 28000);
+  async function getConfig() {
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(query),
-        signal: ctrl.signal,
+      const r = await fetch("/api/maps-key", { headers: { Accept: "application/json" } });
+      if (r.ok) { const j = await r.json(); if (j && j.key) return j; }
+    } catch (_) {}
+    // en tu computadora: js/config.js (no se sube a GitHub)
+    if (!window.WW_CONFIG) {
+      await new Promise((res) => {
+        const s = document.createElement("script");
+        s.src = "js/config.js"; s.onload = res; s.onerror = res;
+        document.head.appendChild(s);
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      if (data.remark && /error|timed out/i.test(data.remark) && !(data.elements || []).length) throw new Error(data.remark);
-      return data.elements || [];
-    } finally {
-      clearTimeout(timer);
     }
+    const c = window.WW_CONFIG || {};
+    return { key: c.googleMapsKey || "", mapId: c.googleMapsMapId || "", region: c.region || "MX" };
   }
 
-  // Nominatim pide máximo 1 consulta por segundo
-  let lastGeo = 0;
+  function loadGoogle() {
+    if (gmPromise) return gmPromise;
+    gmPromise = (async () => {
+      const cfg = await getConfig();
+      if (!cfg.key) { const e = new Error("sin-clave"); e.code = "NO_KEY"; throw e; }
+      // Google llama a esta función si la clave no es válida o no tiene permisos
+      window.gm_authFailure = () => { authFailed = true; mostrarErrorClave(); };
+      if (!(window.google && google.maps && google.maps.importLibrary)) {
+        await new Promise((res, rej) => {
+          window.__wwMapsReady = res;
+          const s = document.createElement("script");
+          s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.key)}&v=weekly&loading=async&language=es&region=${encodeURIComponent(cfg.region || "MX")}&callback=__wwMapsReady`;
+          s.async = true;
+          s.onerror = () => rej(new Error("No se pudo cargar Google Maps"));
+          document.head.appendChild(s);
+        });
+      }
+      const [maps, places, marker] = await Promise.all([
+        google.maps.importLibrary("maps"),
+        google.maps.importLibrary("places"),
+        google.maps.importLibrary("marker"),
+      ]);
+      return {
+        Map: maps.Map, Circle: maps.Circle, InfoWindow: maps.InfoWindow,
+        Place: places.Place, Rank: places.SearchNearbyRankPreference,
+        Marker: marker.AdvancedMarkerElement,
+        mapId: cfg.mapId || "DEMO_MAP_ID",
+        region: (cfg.region || "MX").toLowerCase(),
+      };
+    })();
+    gmPromise.catch(() => { gmPromise = null; });
+    return gmPromise;
+  }
+
+  // rectángulo que contiene el círculo de búsqueda (para searchByText)
+  function boundsOf(o, radiusKm) {
+    const dLat = radiusKm / 111.32;
+    const dLon = radiusKm / (111.32 * Math.cos((o.lat * Math.PI) / 180));
+    return { north: o.lat + dLat, south: o.lat - dLat, east: o.lon + dLon, west: o.lon - dLon };
+  }
+
+  async function placesSearch(cat, o, radiusKm) {
+    const gm = await loadGoogle();
+    const c = CATS[cat];
+    const calls = [];
+    if (c.nearby) {
+      calls.push(gm.Place.searchNearby({
+        fields: FIELDS,
+        locationRestriction: { center: { lat: o.lat, lng: o.lon }, radius: radiusKm * 1000 },
+        includedTypes: c.nearby,
+        maxResultCount: 20,
+        rankPreference: gm.Rank.DISTANCE,
+        language: "es",
+        region: gm.region,
+      }));
+    }
+    if (c.text) {
+      calls.push(gm.Place.searchByText({
+        textQuery: c.text,
+        fields: FIELDS,
+        locationRestriction: boundsOf(o, radiusKm),
+        maxResultCount: 20,
+        language: "es",
+        region: gm.region,
+      }));
+    }
+    const settled = await Promise.allSettled(calls);
+    const ok = settled.filter((r) => r.status === "fulfilled");
+    if (!ok.length) throw settled[0].reason || new Error("Sin respuesta");
+    const all = ok.flatMap((r) => r.value.places || []);
+    const lleno = ok.some((r) => (r.value.places || []).length >= 20);
+    const seen = new Set();
+    const list = all.filter((p) => p && p.id && !seen.has(p.id) && seen.add(p.id));
+    return { list, lleno };
+  }
+
   async function geocode(q) {
-    const wait = 1100 - (Date.now() - lastGeo);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastGeo = Date.now();
-    const url = `${NOMINATIM}?format=jsonv2&limit=5&addressdetails=0&accept-language=es&q=${encodeURIComponent(q)}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const rows = await res.json();
-    return rows.map((r) => ({ lat: +r.lat, lon: +r.lon, label: r.display_name }));
+    const gm = await loadGoogle();
+    const { places } = await gm.Place.searchByText({
+      textQuery: q,
+      fields: ["displayName", "formattedAddress", "location"],
+      maxResultCount: 5,
+      language: "es",
+      region: gm.region,
+    });
+    return (places || []).filter((p) => p.location).map((p) => ({
+      lat: p.location.lat(), lon: p.location.lng(),
+      label: p.formattedAddress || p.displayName || q,
+    }));
   }
   const shortLabel = (s) => String(s || "").split(",").slice(0, 3).join(",").trim();
 
   /* =========================================================
-     D. Mis lugares guardados (Store con Supabase; si no, navegador)
+     D. Mis lugares guardados
+     Por las reglas de Google solo guardamos el ID del lugar
+     (se puede guardar sin límite); los datos se vuelven a
+     pedir a Places API al abrir "Mis lugares guardados".
      ========================================================= */
   const savedApi = {
     async list() {
@@ -325,7 +313,24 @@
       lsSet(LOCAL_SAVED_KEY, lsGet(LOCAL_SAVED_KEY, []).filter((x) => x.id !== id));
     },
   };
-  const slim = (p) => ({ id: p.id, name: p.name, tipo: p.tipo, cat: p.cat, lat: p.lat, lon: p.lon, addr: p.addr, phone: p.phone, website: p.website, hours: p.hours, acc: p.acc, accNote: p.accNote, savedAt: new Date().toISOString() });
+  const isGoogleId = (id) => typeof id === "string" && id.length > 10 && !id.includes("/"); // ignora guardados viejos de OSM
+  const detailCache = new Map();
+
+  async function fetchSaved(refs) {
+    const gm = await loadGoogle();
+    return Promise.all(refs.map(async (r) => {
+      if (detailCache.has(r.id)) return { ...detailCache.get(r.id), dist: S.origin ? km(S.origin, detailCache.get(r.id)) : null };
+      try {
+        const pl = new gm.Place({ id: r.id, requestedLanguage: "es" });
+        await pl.fetchFields({ fields: FIELDS });
+        const p = toPlace(pl, r.cat, S.origin);
+        if (p) detailCache.set(r.id, p);
+        return p || { id: r.id, missing: true };
+      } catch (_) {
+        return { id: r.id, missing: true };
+      }
+    }));
+  }
 
   /* =========================================================
      E. Lupita: entender qué busca la familia
@@ -364,19 +369,22 @@
     radius: RADIOS.includes(prefs.radius) ? prefs.radius : 5,
     filters: new Set((prefs.filters || []).filter((k) => ACCESOS.some((a) => a.k === k))),
     results: [],
+    lleno: false,
     status: "idle",        // idle | loading | done | error
     error: "",
     shown: PAGE,
     tab: "buscar",
-    saved: [],
-    etapa: null,           // { key, fuente: "proceso" | "manual" }
+    saved: [],             // [{ id, cat, savedAt }]
+    savedDetails: null,    // fichas de los guardados (pedidas a Google)
+    savedStatus: "idle",
+    etapa: null,
     pickEtapa: false,
     candidates: [],
     patient: null,
   };
   const savePrefs = () => lsSet(PREFS_KEY, { radius: S.radius, filters: [...S.filters] });
 
-  let root = null, map = null, markersLayer = null, originLayer = null, markers = {};
+  let root = null, map = null, gmRef = null, info = null, overlays = [], markers = {};
   let seq = 0;
   const cache = new Map();
 
@@ -448,6 +456,7 @@
             <h2 class="h-sub">Accesibilidad</h2>
             <p class="small">Muestra solo lugares que tengan registrado que cuentan con:</p>
             <div class="chips-row" id="svcFilters"></div>
+            <p class="svc-fine">Google Maps no registra si un lugar tiene elevador, por eso ese dato no aparece.</p>
           </section>
         </div>
 
@@ -455,7 +464,7 @@
           <div class="svc-status" id="svcStatus" aria-live="polite"></div>
           <div class="svc-map" id="svcMap" role="region" aria-label="Mapa de resultados"></div>
           <div class="list-col" id="svcList"></div>
-          <p class="note-dashed">Los datos vienen de <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>, un mapa que hace la comunidad, y pueden estar incompletos. Llamen antes de ir para confirmar horarios y servicios. <b>En una emergencia llamen al 911.</b></p>
+          <p class="note-dashed">Los datos de los lugares vienen de Google Maps y pueden cambiar. Llamen antes de ir para confirmar horarios y servicios. <b>En una emergencia llamen al 911.</b></p>
         </div>
       </div>`;
     if (window.Cutout) Cutout.cutAll(root);
@@ -533,14 +542,18 @@
     $("#svcFilters", root).innerHTML = ACCESOS.map((a) => `<button type="button" class="filter acc-filter ${S.filters.has(a.k) ? "on" : ""}" data-filter="${a.k}" aria-pressed="${S.filters.has(a.k)}">${S.filters.has(a.k) ? "✓ " : ""}${esc(a.label)}</button>`).join("");
   }
 
-  const passFilters = (p) => [...S.filters].every((k) => (p.acc || []).some((a) => a.k === k && a.ok));
+  const passFilters = (p) => p.missing || [...S.filters].every((k) => (p.acc || []).some((a) => a.k === k && a.ok));
 
   function currentBase() {
     if (S.tab === "guardados") {
-      return S.saved.map((p) => ({ ...p, dist: S.origin ? km(S.origin, p) : null }))
+      return (S.savedDetails || []).map((p) => (p.missing ? p : { ...p, dist: S.origin ? km(S.origin, p) : null }))
         .sort((a, b) => (a.dist == null || b.dist == null ? 0 : a.dist - b.dist));
     }
     return S.status === "done" ? S.results : [];
+  }
+
+  function noKeyMsg() {
+    return `<p><b>Falta configurar Google Maps.</b> Agreguen la variable <code>GOOGLE_MAPS_API_KEY</code> en Vercel (o <code>js/config.js</code> en su computadora) y activen <i>Maps JavaScript API</i> y <i>Places API (New)</i>.</p>`;
   }
 
   function drawResults(fit) {
@@ -551,19 +564,22 @@
     let msg = "";
 
     if (S.tab === "guardados") {
-      msg = S.saved.length
-        ? `<p><b>${S.saved.length}</b> ${S.saved.length === 1 ? "lugar guardado" : "lugares guardados"}${S.filters.size ? ` · ${list.length} con los filtros de accesibilidad` : ""}.</p>`
-        : `<p>Aún no guardan lugares. Toca <b>☆ Guardar</b> en cualquier ficha para encontrarla rápido después.</p>`;
+      if (!S.saved.length) msg = `<p>Aún no guardan lugares. Toquen <b>☆ Guardar</b> en cualquier ficha para encontrarla rápido después.</p>`;
+      else if (S.savedStatus === "loading") msg = `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Cargando sus lugares guardados…</p>`;
+      else if (S.savedStatus === "error") msg = S.error === "NO_KEY" ? noKeyMsg() : `<p>No pudimos cargar sus lugares guardados. Revisen su conexión.</p><button type="button" class="btn-soft btn-sm" data-retry-saved>Intentar de nuevo</button>`;
+      else msg = `<p><b>${S.saved.length}</b> ${S.saved.length === 1 ? "lugar guardado" : "lugares guardados"}${S.filters.size ? ` · ${list.length} con los filtros de accesibilidad` : ""}.</p>`;
     } else if (S.status === "loading") {
       msg = `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Buscando ${esc(CATS[S.cat].short)} a menos de ${S.radius} km…</p>`;
     } else if (S.status === "error") {
-      msg = `<p>No pudimos consultar el mapa en este momento. ${esc(S.error)}</p><button type="button" class="btn-soft btn-sm" data-retry>Intentar de nuevo</button>`;
+      msg = S.error === "NO_KEY" ? noKeyMsg()
+        : `<p>No pudimos consultar Google Maps en este momento. ${esc(S.error)}</p><button type="button" class="btn-soft btn-sm" data-retry>Intentar de nuevo</button>`;
     } else if (S.status === "done") {
       const total = S.results.length;
       if (!total) {
-        msg = `<p>No encontramos ${esc(CATS[S.cat].short)} registrados a menos de ${S.radius} km.</p>${S.radius < 20 ? `<button type="button" class="btn-soft btn-sm" data-radius-up>Buscar más lejos (${RADIOS[RADIOS.indexOf(S.radius) + 1]} km)</button>` : ""}`;
+        msg = `<p>No encontramos ${esc(CATS[S.cat].short)} a menos de ${S.radius} km.</p>${S.radius < 20 ? `<button type="button" class="btn-soft btn-sm" data-radius-up>Buscar más lejos (${RADIOS[RADIOS.indexOf(S.radius) + 1]} km)</button>` : ""}`;
       } else {
-        msg = `<p>Encontramos <b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(CATS[S.cat].short)} a menos de ${S.radius} km${S.filters.size ? `. Con los filtros de accesibilidad: <b>${list.length}</b>` : ""}. Ordenados del más cercano al más lejano.</p>`;
+        msg = `<p>Encontramos <b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(CATS[S.cat].short)} a menos de ${S.radius} km${S.filters.size ? `. Con los filtros de accesibilidad: <b>${list.length}</b>` : ""}. Ordenados del más cercano al más lejano.</p>` +
+          (S.lleno ? `<p class="svc-fine">Google entrega hasta 20 lugares por búsqueda: si quieren ver otros, elijan un radio más chico.</p>` : "");
       }
     } else {
       msg = !S.cat && !S.origin ? `<p>Elijan <b>qué necesitan</b> y <b>dónde buscar</b>, y aquí aparecerán los lugares más cercanos.</p>`
@@ -572,96 +588,140 @@
     }
 
     // ¿cuántos lugares tienen registrado cada dato de accesibilidad?
-    if (S.filters.size && base.length) {
+    const conDatos = base.filter((p) => !p.missing);
+    if (S.filters.size && conDatos.length) {
       const notes = [...S.filters].map((k) => {
-        const n = base.filter((p) => (p.acc || []).some((a) => a.k === k)).length;
+        const n = conDatos.filter((p) => (p.acc || []).some((a) => a.k === k)).length;
         const a = ACCESOS.find((x) => x.k === k);
-        return `${a.label.toLowerCase()}: ${n ? `${n} de ${base.length} lo tienen registrado` : "ninguno lo tiene registrado"}`;
+        return `${a.label.toLowerCase()}: ${n ? `${n} de ${conDatos.length} lo tienen registrado` : "ninguno lo tiene registrado"}`;
       });
-      msg += `<p class="svc-fine">Dato registrado en el mapa · ${notes.map(esc).join(" · ")}.</p>`;
+      msg += `<p class="svc-fine">Dato registrado en Google Maps · ${notes.map(esc).join(" · ")}.</p>`;
       if (!list.length) msg += `<button type="button" class="btn-soft btn-sm" data-clear-filters>Quitar filtros</button>`;
     }
     status.innerHTML = msg;
 
     const savedIds = new Set(S.saved.map((p) => p.id));
-    $("#svcList", root).innerHTML = visible.map((p, i) => card(p, i + 1, savedIds.has(p.id))).join("") +
+    $("#svcList", root).innerHTML = visible.map((p, i) => (p.missing ? missingCard(p) : card(p, i + 1, savedIds.has(p.id)))).join("") +
       (list.length > visible.length ? `<button type="button" class="btn btn-secondary" data-more>Ver más lugares (${list.length - visible.length})</button>` : "");
 
-    drawMarkers(visible, savedIds, fit);
+    drawMarkers(visible.filter((p) => !p.missing), savedIds, fit);
   }
 
   function rutaUrl(p) {
-    const to = `${p.lat.toFixed(5)}%2C${p.lon.toFixed(5)}`;
-    return S.origin
-      ? `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${S.origin.lat.toFixed(5)}%2C${S.origin.lon.toFixed(5)}%3B${to}`
-      : `https://www.openstreetmap.org/directions?to=${to}`;
+    const q = `&destination=${encodeURIComponent(p.name || `${p.lat},${p.lon}`)}&destination_place_id=${encodeURIComponent(p.id)}`;
+    const o = S.origin ? `&origin=${S.origin.lat.toFixed(6)}%2C${S.origin.lon.toFixed(6)}` : "";
+    return `https://www.google.com/maps/dir/?api=1${o}${q}`;
   }
 
   function card(p, n, saved) {
     const tel = (p.phone || "").replace(/[^\d+]/g, "");
     return `
-      <article class="place ${saved ? "saved" : ""}" id="pl-${esc(p.id.replace("/", "-"))}" data-id="${esc(p.id)}">
+      <article class="place ${saved ? "saved" : ""}" data-id="${esc(p.id)}">
         <div class="place-top">
           <button type="button" class="place-n" data-focus="${esc(p.id)}" aria-label="Ver en el mapa">${n}</button>
           <div class="place-main">
-            <h3>${p.name ? esc(p.name) : `${esc(p.tipo)} <small>(sin nombre registrado)</small>`}</h3>
+            <h3>${esc(p.name || p.tipo)}</h3>
             <span class="place-type">${esc(p.tipo)}</span>
           </div>
           ${p.dist != null ? `<span class="place-dist" title="Distancia en línea recta">${fDist(p.dist)}</span>` : ""}
         </div>
-        <p class="place-addr">${p.addr ? esc(p.addr) : `<span class="muted">Dirección no registrada en el mapa</span>`}</p>
-        ${p.hours ? `<p class="place-line"><span class="place-k">Horario</span> ${esc(p.hours)}</p>` : ""}
+        ${p.closed ? `<p class="place-closed">Google lo marca como cerrado definitivamente.</p>` : ""}
+        <p class="place-addr">${p.addr ? esc(p.addr) : `<span class="muted">Dirección no disponible</span>`}</p>
         ${p.phone ? `<p class="place-line"><span class="place-k">Teléfono</span> ${esc(p.phone)}</p>` : ""}
-        ${p.acc && p.acc.length ? `<ul class="place-acc" aria-label="Accesibilidad registrada">${p.acc.map((a) => { const lim = !a.ok && /limitad/.test(a.txt); return `<li class="${a.ok ? "ok" : lim ? "lim" : "no"}">${a.ok ? "✓" : lim ? "◐" : "✕"} ${esc(a.txt)}</li>`; }).join("")}</ul>` : ""}
-        ${p.accNote ? `<p class="svc-fine">Nota de accesibilidad: ${esc(p.accNote)}</p>` : ""}
+        ${p.hours && p.hours.length ? `<details class="place-hours"><summary><span class="place-k">Horario</span> ${esc(hoyHorario(p.hours))}</summary><ul>${p.hours.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
+        ${p.acc && p.acc.length ? `<ul class="place-acc" aria-label="Accesibilidad registrada">${p.acc.map((a) => `<li class="${a.ok ? "ok" : "no"}">${a.ok ? "✓" : "✕"} ${esc(a.txt)}</li>`).join("")}</ul>` : ""}
         <div class="place-actions">
           <a class="pill-slate" href="${rutaUrl(p)}" target="_blank" rel="noopener">Cómo llegar</a>
           ${tel ? `<a class="pill-light" href="tel:${esc(tel)}">Llamar</a>` : ""}
           ${p.website ? `<a class="pill-light" href="${esc(p.website)}" target="_blank" rel="noopener">Página web</a>` : ""}
           <button type="button" class="save-btn ${saved ? "on" : ""}" data-save="${esc(p.id)}" aria-pressed="${saved}">${saved ? "★ Guardado" : "☆ Guardar"}</button>
         </div>
-        <a class="place-alt" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat.toFixed(6)}%2C${p.lon.toFixed(6)}" target="_blank" rel="noopener">Abrir en Google Maps</a>
+        ${p.gmaps ? `<a class="place-alt" href="${esc(p.gmaps)}" target="_blank" rel="noopener">Ver en Google Maps</a>` : ""}
       </article>`;
   }
+  function missingCard(p) {
+    return `
+      <article class="place" data-id="${esc(p.id)}">
+        <p>Este lugar ya no está disponible en Google Maps.</p>
+        <div class="place-actions"><button type="button" class="save-btn on" data-save="${esc(p.id)}">Quitar de mis lugares</button></div>
+      </article>`;
+  }
+  // "lunes: 8:00–20:00" → la línea de hoy
+  function hoyHorario(lines) {
+    const dia = norm(new Date().toLocaleDateString("es-MX", { weekday: "long" }));
+    const l = lines.find((x) => norm(x).startsWith(dia));
+    return l ? "Hoy " + l.replace(/^[^:]+:\s*/, "") : "Ver horario";
+  }
 
-  /* ---------- mapa (Leaflet) ---------- */
-  function initMap() {
+  /* ---------- mapa (Google Maps) ---------- */
+  function mostrarErrorClave() {
+    const el = root && $("#svcMap", root);
+    if (el) el.innerHTML = `<div class="svc-map-off">Google Maps rechazó la clave. Revisen que esté activa la facturación, que estén habilitadas <i>Maps JavaScript API</i> y <i>Places API (New)</i>, y que la clave permita este dominio.</div>`;
+  }
+
+  async function initMap() {
     const el = $("#svcMap", root);
-    if (map) { map.remove(); map = null; }
-    markers = {};
-    if (!window.L) { el.innerHTML = `<div class="svc-map-off">No se pudo cargar el mapa. La lista de lugares sigue funcionando.</div>`; return; }
-    const c = S.origin || CENTRO_INICIAL;
-    map = L.map(el, { scrollWheelZoom: false, tap: true }).setView([c.lat, c.lon], S.origin ? 13 : CENTRO_INICIAL.zoom);
-    L.tileLayer(TILES, { maxZoom: 19, attribution: ATTRIBUTION }).addTo(map);
-    originLayer = L.layerGroup().addTo(map);
-    markersLayer = L.layerGroup().addTo(map);
-    setTimeout(() => map && map.invalidateSize(), 120);
+    map = null; info = null; overlays = []; markers = {};
+    try {
+      const gm = await loadGoogle();
+      if (!root || !root.contains(el)) return; // ya se cambió de pantalla
+      if (authFailed) { mostrarErrorClave(); return; }
+      gmRef = gm;
+      const c = S.origin || CENTRO_INICIAL;
+      map = new gm.Map(el, {
+        center: { lat: c.lat, lng: c.lon },
+        zoom: S.origin ? 13 : CENTRO_INICIAL.zoom,
+        mapId: gm.mapId,
+        streetViewControl: false, mapTypeControl: false, fullscreenControl: false,
+        clickableIcons: false, gestureHandling: "cooperative",
+      });
+      info = new gm.InfoWindow();
+      drawResults(true);
+    } catch (ex) {
+      el.innerHTML = `<div class="svc-map-off">${ex.code === "NO_KEY" ? "El mapa aparecerá cuando se configure la clave de Google Maps." : "No se pudo cargar el mapa. Revisen su conexión."}</div>`;
+    }
+  }
+
+  function clearOverlays() {
+    overlays.forEach((o) => { if ("map" in o) o.map = null; if (o.setMap) o.setMap(null); });
+    overlays = []; markers = {};
   }
 
   function drawMarkers(list, savedIds, fit) {
-    if (!map) return;
-    markersLayer.clearLayers(); originLayer.clearLayers(); markers = {};
+    if (!map || !gmRef) return;
+    const gm = gmRef;
+    clearOverlays();
     let circle = null;
     if (S.origin) {
-      L.marker([S.origin.lat, S.origin.lon], { icon: L.divIcon({ className: "svc-me", html: "<span></span>", iconSize: [24, 24], iconAnchor: [12, 12] }), title: "Punto de búsqueda", keyboard: false, zIndexOffset: 1000 }).addTo(originLayer);
-      if (S.tab === "buscar") circle = L.circle([S.origin.lat, S.origin.lon], { radius: S.radius * 1000, color: "#007380", weight: 2, dashArray: "6 6", fillColor: "#21BBBB", fillOpacity: 0.07, interactive: false }).addTo(originLayer);
+      const me = document.createElement("div");
+      me.className = "svc-me"; me.innerHTML = "<span></span>";
+      overlays.push(new gm.Marker({ map, position: { lat: S.origin.lat, lng: S.origin.lon }, content: me, title: "Punto de búsqueda", zIndex: 1000 }));
+      if (S.tab === "buscar") {
+        circle = new gm.Circle({ map, center: { lat: S.origin.lat, lng: S.origin.lon }, radius: S.radius * 1000, strokeColor: "#007380", strokeWeight: 2, fillColor: "#21BBBB", fillOpacity: 0.07, clickable: false });
+        overlays.push(circle);
+      }
     }
     list.forEach((p, i) => {
-      const m = L.marker([p.lat, p.lon], {
-        icon: L.divIcon({ className: "svc-pin" + (savedIds.has(p.id) ? " saved" : ""), html: `<span>${i + 1}</span>`, iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -14] }),
-        title: p.name || p.tipo, riseOnHover: true,
+      const pin = document.createElement("div");
+      pin.className = "svc-pin" + (savedIds.has(p.id) ? " saved" : "");
+      pin.innerHTML = `<span>${i + 1}</span>`;
+      const m = new gm.Marker({ map, position: { lat: p.lat, lng: p.lon }, content: pin, title: p.name || p.tipo });
+      m.addListener("click", () => {
+        info.setContent(`<div class="svc-info"><b>${esc(p.name || p.tipo)}</b><br>${esc(p.tipo)}${p.dist != null ? " · " + fDist(p.dist) : ""}<br><button type="button" class="link-btn" data-goto="${esc(p.id)}">Ver ficha</button></div>`);
+        info.open({ map, anchor: m });
       });
-      m.bindPopup(`<b>${esc(p.name || p.tipo)}</b><br>${esc(p.tipo)}${p.dist != null ? " · " + fDist(p.dist) : ""}<br><button type="button" class="link-btn" data-goto="${esc(p.id)}">Ver ficha</button>`);
-      m.addTo(markersLayer);
+      overlays.push(m);
       markers[p.id] = m;
     });
     if (!fit) return;
-    if (circle) map.fitBounds(circle.getBounds(), { padding: [10, 10] });
+    if (circle) map.fitBounds(circle.getBounds(), 10);
     else if (list.length) {
-      const b = L.latLngBounds(list.map((p) => [p.lat, p.lon]));
-      if (S.origin) b.extend([S.origin.lat, S.origin.lon]);
-      map.fitBounds(b, { padding: [30, 30], maxZoom: 16 });
-    } else if (S.origin) map.setView([S.origin.lat, S.origin.lon], 13);
+      const b = new google.maps.LatLngBounds();
+      list.forEach((p) => b.extend({ lat: p.lat, lng: p.lon }));
+      if (S.origin) b.extend({ lat: S.origin.lat, lng: S.origin.lon });
+      map.fitBounds(b, 40);
+      if (list.length === 1) map.setZoom(16);
+    } else if (S.origin) { map.setCenter({ lat: S.origin.lat, lng: S.origin.lon }); map.setZoom(13); }
   }
 
   /* ---------- acciones ---------- */
@@ -693,23 +753,19 @@
     S.status = "loading"; S.shown = PAGE; S.tab = "buscar";
     drawTabs(); drawResults();
     try {
-      let els = cache.get(key);
-      if (!els) {
-        els = await overpass(buildQuery(S.cat, S.origin, S.radius), () => {
-          if (my !== seq) return;
-          const st = $(".svc-loading", root);
-          if (st) st.lastChild.textContent = " El mapa está muy ocupado, probando con otro servidor…";
-        });
-        cache.set(key, els);
-      }
+      let r = cache.get(key);
+      if (!r) { r = await placesSearch(S.cat, S.origin, S.radius); cache.set(key, r); }
       if (my !== seq) return;
-      S.results = dedupe(els.map((e) => toPlace(e, S.cat, S.origin)).filter((p) => p && p.dist <= S.radius + 0.05));
+      S.results = r.list.map((pl) => toPlace(pl, S.cat, S.origin))
+        .filter((p) => p && p.dist <= S.radius + 0.05)
+        .sort((a, b) => a.dist - b.dist);
+      S.lleno = r.lleno;
       S.status = "done";
     } catch (ex) {
       if (my !== seq) return;
       S.status = "error";
-      S.error = !navigator.onLine ? "Revisen su conexión a internet."
-        : "Los servidores de OpenStreetMap están muy ocupados o tardaron demasiado. Intenten en un minuto o con un radio más chico.";
+      S.error = ex && ex.code === "NO_KEY" ? "NO_KEY" : !navigator.onLine ? "Revisen su conexión a internet." : "Intenten de nuevo en un momento.";
+      if (ex && ex.code !== "NO_KEY") console.warn("Places API:", ex);
     }
     drawResults(true);
   }
@@ -735,8 +791,8 @@
 
   async function searchAddress(q) {
     q = q.trim();
-    if (q.length < 3) { $("#svcOrigin", root).textContent = "Escribe un poco más: calle y colonia, o ciudad."; return; }
     const out = $("#svcOrigin", root);
+    if (q.length < 3) { out.textContent = "Escribe un poco más: calle y colonia, o ciudad."; return; }
     out.innerHTML = `<span class="dots-loading"><span></span><span></span><span></span></span> Buscando la dirección…`;
     S.candidates = [];
     try {
@@ -746,8 +802,8 @@
       S.candidates = rows;
       out.textContent = "";
       drawOrigin();
-    } catch (_) {
-      out.textContent = "No pudimos buscar la dirección ahora. Revisa tu conexión e intenta de nuevo.";
+    } catch (ex) {
+      out.innerHTML = ex && ex.code === "NO_KEY" ? noKeyMsg() : "No pudimos buscar la dirección ahora. Revisa tu conexión e intenta de nuevo.";
     }
   }
 
@@ -763,10 +819,23 @@
   }
 
   async function loadSaved() {
-    try { S.saved = await savedApi.list(); } catch (_) { S.saved = []; }
+    try { S.saved = (await savedApi.list()).filter((p) => isGoogleId(p.id)); } catch (_) { S.saved = []; }
     if (!root) return;
     drawTabs();
-    drawResults(S.tab === "guardados");
+    if (S.tab === "guardados") loadSavedDetails();
+    else drawResults(false);
+  }
+
+  async function loadSavedDetails() {
+    if (!S.saved.length) { S.savedDetails = []; drawResults(true); return; }
+    S.savedStatus = "loading"; drawResults(false);
+    try {
+      S.savedDetails = await fetchSaved(S.saved);
+      S.savedStatus = "done";
+    } catch (ex) {
+      S.savedStatus = "error"; S.error = ex && ex.code === "NO_KEY" ? "NO_KEY" : "";
+    }
+    if (S.tab === "guardados") drawResults(true);
   }
 
   async function toggleSave(id, btn) {
@@ -776,13 +845,16 @@
       if (isSaved) {
         await savedApi.remove(id);
         S.saved = S.saved.filter((p) => p.id !== id);
+        if (S.savedDetails) S.savedDetails = S.savedDetails.filter((p) => p.id !== id);
         toast("Quitado de tus lugares guardados");
       } else {
         const p = S.results.find((x) => x.id === id);
         if (!p) return;
-        const rec = slim(p);
+        const rec = { id: p.id, cat: p.cat, savedAt: new Date().toISOString() }; // solo el ID (reglas de Google)
         await savedApi.add(rec);
         S.saved = [rec, ...S.saved.filter((x) => x.id !== id)];
+        detailCache.set(p.id, p);
+        if (S.savedDetails) S.savedDetails = [p, ...S.savedDetails.filter((x) => x.id !== id)];
         toast("Guardado en «Mis lugares»");
       }
     } catch (ex) {
@@ -798,8 +870,9 @@
     const m = markers[id];
     if (m && map) {
       $("#svcMap", root).scrollIntoView({ behavior: "smooth", block: "center" });
-      map.setView(m.getLatLng(), Math.max(map.getZoom(), 16));
-      m.openPopup();
+      map.panTo(m.position);
+      if (map.getZoom() < 16) map.setZoom(16);
+      google.maps.event.trigger(m, "click");
     }
   }
   function gotoCard(id) {
@@ -813,7 +886,11 @@
     root.addEventListener("click", (e) => {
       const t = e.target;
       let b;
-      if ((b = t.closest("[data-tab]"))) { S.tab = b.dataset.tab; drawTabs(); drawResults(true); if (S.tab === "guardados") loadSaved(); return; }
+      if ((b = t.closest("[data-tab]"))) {
+        S.tab = b.dataset.tab; drawTabs();
+        if (S.tab === "guardados") loadSavedDetails(); else drawResults(true);
+        return;
+      }
       if ((b = t.closest("[data-etapa]"))) {
         lsSet(ETAPA_KEY, { who: S.patient ? S.patient.codigo : "", etapa: b.dataset.etapa });
         S.etapa = { key: b.dataset.etapa, fuente: "manual" }; S.pickEtapa = false; drawEtapa(); return;
@@ -838,14 +915,15 @@
       if ((b = t.closest("[data-cand]"))) { setOrigin(S.candidates[+b.dataset.cand]); return; }
       if (t.closest("#svcGeo")) { useLocation(); return; }
       if (t.closest("[data-retry]")) { cache.clear(); search(); return; }
+      if (t.closest("[data-retry-saved]")) { loadSavedDetails(); return; }
       if (t.closest("[data-more]")) { S.shown += PAGE; drawResults(false); return; }
       if ((b = t.closest("[data-save]"))) { toggleSave(b.dataset.save, b); return; }
       if ((b = t.closest("[data-focus]"))) { focusPlace(b.dataset.focus); return; }
-      if ((b = t.closest("[data-goto]"))) { if (map) map.closePopup(); gotoCard(b.dataset.goto); return; }
+      if ((b = t.closest("[data-goto]"))) { if (info) info.close(); gotoCard(b.dataset.goto); return; }
     });
     $("#svcAddrForm", root).addEventListener("submit", (e) => { e.preventDefault(); searchAddress($("#svcAddr", root).value); });
     $("#svcLupita", root).addEventListener("submit", (e) => { e.preventDefault(); const v = $("#svcLupitaIn", root).value; if (v.trim()) lupita(v); });
   }
 
-  window.Servicios = { mount, detect, reply, etapaDe, ETAPAS, CATS, CAT_ORDER, buildQuery };
+  window.Servicios = { mount, detect, reply, etapaDe, ETAPAS, CATS, CAT_ORDER };
 })();
