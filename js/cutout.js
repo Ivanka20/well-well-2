@@ -6,7 +6,7 @@
 (function () {
   const FONTS = ["'Abril Fatface'", "'Rubik Mono One'", "'Shrikhand'", "'Young Serif'", "'Bungee'", "'Space Mono'", "'DM Serif Display'"];
   // [fondo, letra]
-  const COMBOS = [["var(--sea)", "var(--cream)"], ["var(--cream)", "var(--sea)"], ["var(--tomato)", "var(--cream)"], ["var(--cream)", "var(--tomato)"], ["var(--verdigris)", "var(--sea)"]];
+  const COMBOS = [["var(--sea)", "var(--ink)"], ["var(--cream)", "var(--ink)"], ["var(--tomato)", "var(--cream)"], ["var(--cream)", "var(--tomato)"], ["var(--white)", "var(--ink)"]];
 
   function cut(el) {
     const text = el.dataset.cut;

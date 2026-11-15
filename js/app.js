@@ -525,7 +525,7 @@
   // si no, se arma una hoja con los datos que hay.
   function docPage(d, p) {
     return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${esc(d.titulo)}</title>
-      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#007380;background:#FFEFDB}h1{margin:0 0 4px}p.meta{margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
+      <style>body{font-family:Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px;color:#2B2D2F;background:#FFEFDB}h1{margin:0 0 4px;padding-bottom:6px;border-bottom:4px solid #A9C9D5}p.meta{margin:0 0 24px}dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}dt{font-weight:bold}</style>
       </head><body><h1>${esc(d.titulo)}</h1><p class="meta">${esc(d.tipo || "")} · ${fDia(d.fecha)}</p>
       <dl><dt>Paciente</dt><dd>${esc(p.nombre)}</dd><dt>ID</dt><dd>${esc(p.codigo)}</dd><dt>Hospital</dt><dd>${esc(p.hospital)}</dd></dl>
       <h2>Resumen</h2><p>${esc(d.resumen || "")}</p></body></html>`;
