@@ -12,7 +12,7 @@
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const cutTitle = (text, size, seed) => `<h1 class="screen-title"><span data-cut="${esc(text)}" data-size="${size || 32}" data-seed="${seed || 0}"></span></h1>`;
-  const face = (px) => `<span class="face">${lupiSVG(px || 30)}</span>`;
+  const face = (px, mood) => `<span class="face">${lupiSVG(px || 30, mood)}</span>`;
 
   /* ---------- fechas ---------- */
   const fFecha = (d) => new Date(d).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" });
@@ -630,7 +630,7 @@
     body.innerHTML = `
       ${backHead("Mis avisos", 6, `<span style="font-size:16px">${unreadN ? unreadN + (unreadN === 1 ? " nuevo" : " nuevos") : "Todo leído"}</span>`)}
       <div class="filters">${["Todos", "Urgente", "Recordatorio", "Mensaje"].map((f) => `<button type="button" class="filter ${f === avisoFiltro ? "on" : ""}" data-f="${f}">${f}</button>`).join("")}</div>
-      ${msgs.length && unreadN === 0 && avisoFiltro === "Todos" ? `<div class="all-done">${face(72)}<b>¡Todo al día!</b><span style="font-size:16px">Si llega algo nuevo, aparece aquí.</span></div>` : ""}
+      ${msgs.length && unreadN === 0 && avisoFiltro === "Todos" ? `<div class="all-done">${face(72, "feliz")}<b>¡Todo al día!</b><span style="font-size:16px">Si llega algo nuevo, aparece aquí.</span></div>` : ""}
       ${!list.length ? `<div class="empty">Nada por aquí. ¡Qué tranquilidad!</div>` : ""}
       ${unread.map((m) => `
         <div class="aviso ${m.tipo || "mensaje"}">

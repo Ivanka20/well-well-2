@@ -438,16 +438,18 @@ details.past-box > div { display: flex; flex-direction: column; gap: 14px; }
 .lupi-stage { display: flex; flex-direction: column; align-items: center; }
 .lupi-big { width: 140px; }
 .lupi-big svg { width: 100%; height: auto; overflow: visible; }
-.lupi-body { transform-origin: 100px 100px; animation: ww-float 3s ease-in-out infinite; }
-.lupi-eye { animation: blink 4.5s infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+/* Lupita 4d «Con cejas» (dibujo en js/lupi-art.js) */
+@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes lp-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes lp-talk { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.45); } }
+@keyframes lp-dots { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes lp-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+.lupi-big .lupi-body { animation: lp-float 3.2s ease-in-out infinite; }
+.lp-blink { animation: lp-blink 4s infinite; transform-box: fill-box; transform-origin: center; }
+.lp-talk { animation: lp-talk .35s ease-in-out infinite; transform-box: fill-box; transform-origin: center top; }
+.lp-dot { animation: lp-dots 1.2s infinite; }
+.lp-wig { animation: lp-wiggle 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
 .lupi-eyes { transition: transform .2s ease; }
-.lupi-mouth-open { opacity: 0; transform-box: fill-box; transform-origin: center; }
-[data-state="thinking"] .lupi-body { animation: think .6s ease-in-out infinite alternate; }
-@keyframes think { from { transform: rotate(-8deg); } to { transform: rotate(8deg) translateY(-6px); } }
-[data-state="talking"] .lupi-mouth { opacity: 0; }
-[data-state="talking"] .lupi-mouth-open { animation: talk .25s infinite alternate; }
-@keyframes talk { from { opacity: 1; transform: scaleY(.4); } to { opacity: 1; transform: scaleY(1); } }
 .bubble { position: relative; width: 100%; margin-top: 18px; padding: 18px 20px; border-radius: 24px; border: 2.5px solid var(--sea); box-shadow: 6px 6px 0 var(--verdigris); background: var(--cream); }
 .bubble::before { content: ""; position: absolute; top: -13px; left: 50%; width: 22px; height: 22px; background: inherit; border-left: 2.5px solid var(--sea); border-top: 2.5px solid var(--sea); transform: translateX(-50%) rotate(45deg); }
 .bubble.bg-verdigris { background: var(--verdigris); box-shadow: 6px 6px 0 var(--tomato); }

@@ -36,7 +36,18 @@
   function loadCards() { try { return JSON.parse(localStorage.getItem(CARDS_KEY) || "[]"); } catch (_) { return []; } }
   function saveCards(c) { try { localStorage.setItem(CARDS_KEY, JSON.stringify(c.slice(0, 24))); } catch (_) {} }
 
-  function setState(s) { $("#lupiBig").dataset.state = s; }
+  // Estado de Lupita → estado de ánimo del dibujo 4d
+  // idle: normal · thinking: pensando · talking: hablando · happy: feliz (y luego vuelve a normal)
+  const MOOD = { idle: "neutral", thinking: "pensando", talking: "hablando", happy: "feliz" };
+  let moodTimer = null;
+  function setState(s) {
+    const el = $("#lupiBig");
+    const mood = MOOD[s] || "neutral";
+    el.dataset.state = s;
+    if (el.dataset.mood !== mood) { el.innerHTML = lupiSVG(260, mood); el.dataset.mood = mood; }
+    clearTimeout(moodTimer);
+    if (s === "happy") moodTimer = setTimeout(() => setState("idle"), 1600);
+  }
 
   function show(term, text, color, actionHtml) {
     const b = $("#lupiBubble");
@@ -94,7 +105,7 @@
       setState("talking");
       show(q, Servicios.reply(hit), "verdigris",
         `<p><a class="btn btn-primary lupita-go" href="#/servicios/${hit.cat}">Buscar ${esc(hit.short)} cerca →</a></p>`);
-      setTimeout(() => setState("idle"), 1800);
+      setTimeout(() => setState("happy"), 1800);
       return;
     }
 
@@ -115,13 +126,13 @@
 
     setState("talking");
     show(q, answer, color);
-    setTimeout(() => setState("idle"), 1800);
+    setTimeout(() => setState("happy"), 1800);
     busy = false;
     $("#lupiSend").disabled = false;
   }
 
   function init() {
-    $("#lupiBig").innerHTML = lupiSVG(260);
+    setState("idle");
     document.querySelectorAll(".nav-lupi").forEach((el) => (el.innerHTML = lupiSVG(28)));
     show("¡Hola! Soy Lupita", "Hago que las palabras difíciles del hospital se vuelvan **chiquitas y fáciles**, para peques y para grandes. Escribe una palabra que hayas escuchado y te la explico.\n\nTambién te ayudo a **encontrar lugares cerca de casa**: dime, por ejemplo, «necesito un lugar donde mi hijo pueda recibir fisioterapia».", "cream");
 
