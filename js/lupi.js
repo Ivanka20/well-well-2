@@ -1,12 +1,15 @@
 /* =========================================================
-   Lupi, el asistente que explica palabras médicas.
+   Lupita, la asistente que explica palabras médicas
+   y ayuda a buscar servicios cerca de casa (Cerca de mí).
    Pregunta a /api/chat (función de Vercel con Claude).
    Si no hay conexión, usa un pequeño diccionario local.
+   (El código conserva el nombre interno "Lupi" para no
+   romper nada: window.Lupi y window.Lupita son lo mismo.)
    ========================================================= */
 (function () {
   const CARDS_KEY = "ww-lupi-cards";
   const COLORS = ["cream", "verdigris", "sea"];
-  const SUGGEST = ["Anestesia", "Biopsia", "Catéter", "Suero", "Hemograma", "Tomografía", "Ayuno", "Sutura", "Oxímetro", "Alta médica"];
+  const SUGGEST = ["¿Dónde hay fisioterapia cerca?", "Anestesia", "Biopsia", "Catéter", "Suero", "Hemograma", "Tomografía", "Ayuno", "Sutura", "Oxímetro", "Alta médica", "Necesito una farmacia cercana"];
 
   const GLOSARIO = {
     anestesia: { nino: "Es una medicina que hace que te duermas profundito o que una parte de tu cuerpo no sienta nada, para que no te duela cuando los doctores te curan. Cuando se acaba, despiertas poco a poco.", adulto: "Medicamento que bloquea el dolor. Puede ser general (duermes por completo) o local/regional (solo se adormece una zona). Un anestesiólogo vigila tus signos todo el tiempo." },
@@ -22,7 +25,7 @@
   };
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, "").trim();
 
-  let mode = "nino";
+  let mode = "adulto";
   let history = [];
   let busy = false;
 
@@ -35,11 +38,11 @@
 
   function setState(s) { $("#lupiBig").dataset.state = s; }
 
-  function show(term, text, color) {
+  function show(term, text, color, actionHtml) {
     const b = $("#lupiBubble");
     b.className = "bubble bg-" + (color || "cream");
     $("#bubbleTerm").textContent = term;
-    $("#bubbleText").innerHTML = fmt(text);
+    $("#bubbleText").innerHTML = fmt(text) + (actionHtml || "");
     b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
   }
 
@@ -83,6 +86,18 @@
     if (busy) return;
     q = q.trim();
     if (!q) return;
+
+    // ¿Busca un lugar? ("necesito un lugar donde mi hijo reciba fisioterapia")
+    const hit = window.Servicios && Servicios.detect(q);
+    if (hit) {
+      history.push({ role: "user", content: q }, { role: "assistant", content: Servicios.reply(hit) });
+      setState("talking");
+      show(q, Servicios.reply(hit), "verdigris",
+        `<p><a class="btn btn-primary lupita-go" href="#/servicios/${hit.cat}">Buscar ${esc(hit.short)} cerca →</a></p>`);
+      setTimeout(() => setState("idle"), 1800);
+      return;
+    }
+
     busy = true;
     $("#lupiSend").disabled = true;
     setState("thinking");
@@ -108,7 +123,7 @@
   function init() {
     $("#lupiBig").innerHTML = lupiSVG(260);
     document.querySelectorAll(".nav-lupi").forEach((el) => (el.innerHTML = lupiSVG(28)));
-    show("¡Hola! Soy Lupi", "Soy tu carita amiga y hago que las palabras difíciles se vuelvan **chiquitas y fáciles**. Escribe una palabra que hayas escuchado en el hospital y te la explico.", "cream");
+    show("¡Hola! Soy Lupita", "Hago que las palabras difíciles del hospital se vuelvan **chiquitas y fáciles**, para peques y para grandes. Escribe una palabra que hayas escuchado y te la explico.\n\nTambién te ayudo a **encontrar lugares cerca de casa**: dime, por ejemplo, «necesito un lugar donde mi hijo pueda recibir fisioterapia».", "cream");
 
     $("#lupiChips").innerHTML = SUGGEST.map((s, i) => `<button type="button" class="chip bg-${COLORS[i % COLORS.length]}">${s}</button>`).join("");
     $("#lupiChips").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (b) ask(b.textContent); });
@@ -128,7 +143,7 @@
     });
     $("#clearCards").addEventListener("click", () => { saveCards([]); renderCards(); });
 
-    // Lupi sigue el cursor con la mirada
+    // Lupita sigue el cursor con la mirada
     document.addEventListener("pointermove", (e) => {
       const eyes = document.querySelector("#lupiBig .lupi-eyes");
       if (!eyes) return;
@@ -141,5 +156,5 @@
     renderCards();
   }
 
-  window.Lupi = { init, ask, explain, fmt };
+  window.Lupi = window.Lupita = { init, ask, explain, fmt };
 })();

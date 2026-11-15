@@ -286,6 +286,39 @@
     await must(sb.from("animo").insert({ paciente_id: p.id, nivel, dolor, nota }));
   }
 
+  /* ---------- Cerca de mí: lugares guardados ----------
+     Paciente con cuenta en Supabase → tabla lugares_guardados.
+     Sin sesión o en modo demo → solo en este navegador. */
+  const PLACES_KEY = "ww-lugares-v1";
+  const localPlaces = () => { try { return JSON.parse(localStorage.getItem(PLACES_KEY) || "[]"); } catch (_) { return []; } };
+  const setLocalPlaces = (l) => { try { localStorage.setItem(PLACES_KEY, JSON.stringify(l.slice(0, 200))); } catch (_) {} };
+  const cloudPlaces = () => sb && state.mode === "supabase" && state.role === "paciente" && state.me;
+
+  async function places() {
+    if (cloudPlaces()) {
+      try {
+        const rows = await must(sb.from("lugares_guardados").select("osm_id, datos, created_at").eq("paciente_id", state.me.id).order("created_at", { ascending: false }));
+        return rows.map((r) => ({ ...r.datos, id: r.osm_id, savedAt: r.created_at }));
+      } catch (_) { /* si la tabla aún no existe, se usa el navegador */ }
+    }
+    return localPlaces();
+  }
+  async function savePlace(pl) {
+    if (cloudPlaces()) {
+      try {
+        await must(sb.from("lugares_guardados").upsert({ paciente_id: state.me.id, osm_id: pl.id, datos: pl }, { onConflict: "paciente_id,osm_id" }));
+        return;
+      } catch (_) {}
+    }
+    setLocalPlaces([pl, ...localPlaces().filter((x) => x.id !== pl.id)]);
+  }
+  async function removePlace(id) {
+    if (cloudPlaces()) {
+      try { await must(sb.from("lugares_guardados").delete().eq("paciente_id", state.me.id).eq("osm_id", id)); return; } catch (_) {}
+    }
+    setLocalPlaces(localPlaces().filter((x) => x.id !== id));
+  }
+
   // Avisos en vivo (mensajes, sala, ánimo). Devuelve función para cancelar.
   function subscribe(fn) {
     if (state.mode === "demo") {
@@ -300,5 +333,5 @@
     return () => sb.removeChannel(ch);
   }
 
-  window.Store = { state, login, restore, logout, myPatients, messages, sendMessage, deleteMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf };
+  window.Store = { state, login, restore, logout, myPatients, messages, sendMessage, deleteMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf, places, savePlace, removePlace };
 })();

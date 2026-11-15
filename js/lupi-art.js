@@ -1,5 +1,5 @@
 /* =========================================================
-   Lupi: una carita feliz. Solo usa los colores de la paleta.
+   Lupita: una carita feliz. Solo usa los colores de la paleta.
    (las clases lupi-* permiten parpadear, pensar y "hablar")
    ========================================================= */
 window.lupiSVG = function (size) {

@@ -1,10 +1,11 @@
 /* =========================================================
    well well · interfaz (rediseño de Claude Design)
-   Rutas:  #/              portada
-           #/asistente     Lupi
-           #/ingresar      acceso con ID
-           #/app/<sección> paciente o familiar
-           #/personal      recepción (personal de apoyo)
+   Rutas:  #/                   portada
+           #/asistente          Lupita
+           #/servicios[/<cat>]  Cerca de mí (servicios después del alta)
+           #/ingresar           acceso con ID
+           #/app/<sección>      pacientes y familiares
+           #/personal           recepción (personal del hospital)
    ========================================================= */
 (function () {
   const $ = (s, r) => (r || document).querySelector(s);
@@ -63,6 +64,7 @@
     t.classList.add("show");
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), action ? 4000 : 2600);
   }
+  window.wwToast = toast;
 
   /* ---------- hoja inferior ---------- */
   function openSheet(html, mount) {
@@ -92,7 +94,8 @@
     ["Estoy internado", "Ve tu ruta, medicinas y avisos.", "Entrar con mi ID", () => goApp("ruta")],
     ["Tengo citas", "Ve cuándo, dónde y con quién.", "Ver mis citas", () => goApp("citas")],
     ["Soy familiar", "Entra con el ID de tu familiar.", "Entrar con su ID", () => goLogin("paciente", "#/app/inicio")],
-    ["Soy personal de apoyo", "Manda avisos y revisa expedientes.", "Entrar al panel", () => goLogin("personal", "#/personal")],
+    ["Ya salimos del hospital", "Encuentra rehabilitación, farmacias y más cerca de casa.", "Buscar cerca de mí", () => (location.hash = "#/servicios")],
+    ["Soy personal del hospital", "Manda avisos y revisa expedientes.", "Entrar al panel", () => goLogin("personal", "#/personal")],
   ];
   function drawQuien() {
     $("#quien").innerHTML = QUIEN.map((q, i) => `
@@ -152,9 +155,11 @@
     currentView = view;
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
     const role = Store.state.role;
-    $("#topbar").hidden = view === "app" || view === "personal" || (view === "asistente" && role === "paciente");
-    $("#bottomNav").hidden = !(role === "paciente" && (view === "app" || view === "asistente"));
+    const conBarra = view === "app" || view === "asistente" || view === "servicios";
+    $("#topbar").hidden = view === "app" || view === "personal" || (role === "paciente" && conBarra);
+    $("#bottomNav").hidden = !(role === "paciente" && conBarra);
     $$(".lupi-pill").forEach((a) => a.classList.toggle("active", view === "asistente"));
+    $("#navServicios").classList.toggle("on", view === "servicios");
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
@@ -172,6 +177,15 @@
         $("#lupiBack").href = s.role === "paciente" ? "#/app/inicio" : s.role === "personal" ? "#/personal" : "#/";
         $("#lupiBack").textContent = s.role ? "← Inicio" : "← Volver";
         setBottom("asistente");
+        break;
+      case "servicios":
+        show("servicios");
+        setBottom("servicios");
+        Servicios.mount($("#svcBody"), {
+          patient: s.role === "paciente" ? s.me : null,
+          cat: decodeURIComponent(parts[1] || ""),
+          back: s.role === "paciente" ? "#/app/inicio" : s.role === "personal" ? "#/personal" : "#/",
+        });
         break;
       case "ingresar":
         if (s.role === "paciente") { location.replace("#/app/inicio"); return; }
@@ -212,11 +226,11 @@
   function setRole(role) {
     loginRole = role;
     $$(".role-card").forEach((c) => { const on = c.dataset.role === role; c.classList.toggle("active", on); c.setAttribute("aria-selected", on); });
-    $("#loginIdLabel").textContent = role === "paciente" ? "ID de paciente" : "ID de personal de apoyo";
+    $("#loginIdLabel").textContent = role === "paciente" ? "ID de paciente" : "ID de personal del hospital";
     $("#loginId").placeholder = role === "paciente" ? "WW-0000-00" : "REC-0000";
     $("#loginError").textContent = "";
     $("#loginHint").innerHTML = role === "paciente"
-      ? `Prueba: <button type="button" class="link-btn" data-demo="WW-2048-17|123456">WW-2048-17</button> (internada) · <button type="button" class="link-btn" data-demo="WW-3301-09|123456">WW-3301-09</button> (con citas) · código 123456`
+      ? `Prueba: <button type="button" class="link-btn" data-demo="WW-2048-17|123456">WW-2048-17</button> (internada) · <button type="button" class="link-btn" data-demo="WW-3301-09|123456">WW-3301-09</button> (con citas) · <button type="button" class="link-btn" data-demo="WW-5120-03|123456">WW-5120-03</button> (niño en rehabilitación) · <button type="button" class="link-btn" data-demo="WW-7702-44|123456">WW-7702-44</button> (adulta mayor, ya en casa) · código 123456`
       : `Prueba: <button type="button" class="link-btn" data-demo="REC-0042|apoyo26">REC-0042</button> · <button type="button" class="link-btn" data-demo="REC-0107|apoyo26">REC-0107</button> · código apoyo26`;
   }
 
@@ -308,7 +322,7 @@
   let avisoFiltro = "Todos";
   let justRead = new Set();
   let medOpen = 0;
-  let salaRoom = "juegos";
+  let salaRoom = "general";
 
   const backHead = (title, seed, right) => `
     <div class="row-between"><a href="#/app/inicio" class="btn-back">← Inicio</a>${right || ""}</div>
@@ -372,8 +386,23 @@
         <a href="#/app/citas" class="mini-tile"><span class="i-cal"></span><span class="mini-row"><span>Citas</span><small>${cita ? (dayDiff(cita.inicio) === 0 ? fHora(cita.inicio) : cuando(cita.inicio)) : ""}</small></span></a>
         <a href="#/app/avisos" class="mini-tile"><span class="i-bell"></span><span class="mini-row"><span>Mis avisos</span></span>${unread.length ? `<span class="badge-n">${unread.length}</span>` : ""}</a>
         <a href="#/app/chat" class="mini-tile"><span class="i-chat"></span><span class="mini-row"><span>Chat</span></span></a>
-      </div>`;
+      </div>
+      ${svcTile(p)}`;
     $("#logoutBtn").onclick = doLogout;
+  }
+
+  // Acceso a "Cerca de mí" con una sugerencia según la etapa de recuperación
+  function svcTile(p) {
+    const etapa = Servicios.ETAPAS[Servicios.etapaDe(p)];
+    const cat = ((p.apoyos_sugeridos || [])[0]) || (etapa && etapa.sug[0][0]);
+    const c = Servicios.CATS[cat];
+    return `
+      <a href="#/servicios${c ? "/" + cat : ""}" class="svc-tile">
+        <span class="svc-tile-pin" aria-hidden="true"></span>
+        <span class="svc-tile-t"><span class="lbl-big">Cerca de mí</span>
+          <span class="lbl-sm">${etapa && c ? `${esc(etapa.label)} · sugerimos buscar ${esc(c.short)}` :"Rehabilitación, farmacias y más cerca de casa"}</span></span>
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>`;
   }
 
   /* ---- Mi ruta (variante 1d · Receta que se completa) ---- */
@@ -395,7 +424,7 @@
               <div class="r-head"><span class="r-ring"><span class="dot-pulse"></span></span><span class="t">${esc(x.titulo)}</span><span class="s">En proceso</span></div>
               <span class="meta">${cuando(x.fecha).replace(/^./, (c) => c.toUpperCase())} ${fHora(x.fecha)}${x.lugar ? " · " + esc(x.lugar) : ""}</span>
               ${x.descripcion ? `<span class="desc">${esc(x.descripcion)}</span>` : ""}
-              <div class="lupi-box">${face(30)}<span class="col" id="lupiNow"><span>¿Quieres saber qué es?</span><button type="button" class="pill-slate" data-explain="${esc(x.titulo)}">Pregúntale a Lupi</button></span></div>
+              <div class="lupi-box">${face(30)}<span class="col" id="lupiNow"><span>¿Quieres saber qué es?</span><button type="button" class="pill-slate" data-explain="${esc(x.titulo)}">Pregúntale a Lupita</button></span></div>
             </div>`;
           return `<${tag(i)} class="r-row next"><span class="r-num">${i + 1}</span><span class="t">${esc(x.titulo)}</span></${close}>`;
         }).join("")}
@@ -479,7 +508,7 @@
       }
       const q = e.target.closest("[data-quees]");
       if (q) {
-        openSheet(`<div class="sheet-top"><span class="sheet-step">Lupi te explica</span><button type="button" class="btn-soft btn-sm" data-close>Cerrar</button></div>
+        openSheet(`<div class="sheet-top"><span class="sheet-step">Lupita te explica</span><button type="button" class="btn-soft btn-sm" data-close>Cerrar</button></div>
           <h3>${esc(q.dataset.quees)}</h3><div class="lupi-box">${face(30)}<span class="col" id="sheetLupi"><p class="dots-loading"><span></span><span></span><span></span></p></span></div>`);
         const txt = await Lupi.explain(q.dataset.quees);
         const box = $("#sheetLupi"); if (box) box.innerHTML = Lupi.fmt(txt);
@@ -623,7 +652,7 @@
   }
 
   /* ---- Chat entre pacientes ---- */
-  const ROOMS = [["juegos", "Niñas y niños"], ["general", "Pacientes y familias"]];
+  const ROOMS = [["general", "Pacientes y familias"], ["juegos", "Peques"]];
   const BLOCK = /(\d[\s-]?){7,}|@|https?:\/\/|www\.|\.com\b/i;
   const BAD = ["idiota", "estupido", "estúpido", "tonto", "pendejo", "imbecil", "imbécil"];
 

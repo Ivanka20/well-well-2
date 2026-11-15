@@ -15,7 +15,7 @@
     return d.toISOString().slice(0, 10);
   }
 
-  // Personal de apoyo (recepción): no son médicos, ayudan a pacientes y familias
+  // Personal del hospital (recepción): no son médicos, ayudan a pacientes y familias
   const personal = {
     "REC-0042": { id: "p-42", codigo: "REC-0042", nombre: "Mariana López", puesto: "Recepción", area: "Piso 3 · Pediatría", extension: "3000", horario: "Turno matutino" },
     "REC-0107": { id: "p-107", codigo: "REC-0107", nombre: "Jorge Ruiz", puesto: "Recepción", area: "Consulta externa", extension: "2000", horario: "Turno vespertino" },
@@ -93,11 +93,85 @@
         { id: "e2", titulo: "Electrocardiograma", tipo: "Estudio", fecha: day(-28), resumen: "Ritmo normal." },
       ],
     },
+    // Niño que ya salió del hospital después de una quemadura (Cerca de mí → rehabilitación)
+    "WW-5120-03": {
+      id: "pac-5120",
+      codigo: "WW-5120-03",
+      nombre: "Diego Castillo",
+      apodo: "Diego",
+      fecha_nacimiento: "2018-02-08",
+      tipo: "internado",
+      hospital: "Hospital Infantil del Valle",
+      area: "Ya en casa",
+      cuarto: "",
+      tipo_sangre: "B+",
+      alergias: [],
+      diagnosticos: ["Quemadura de segundo grado en el brazo derecho"],
+      contacto_emergencia: "Paola Castillo (mamá) · 55 2468 1357",
+      etapa_recuperacion: "rehabilitacion",
+      apoyos_sugeridos: ["rehabilitacion", "fisioterapia", "farmacias"],
+      equipo: [],
+      procedimientos: [
+        { id: "d1", titulo: "Llegada a urgencias", descripcion: "Enfriaron y limpiaron la quemadura.", fecha: at(-12, 18, 0), estado: "hecho", lugar: "Urgencias", responsable: "Equipo de urgencias" },
+        { id: "d2", titulo: "Curación y vendaje especial", descripcion: "Pusieron una crema y vendas que protegen la piel nueva.", fecha: at(-12, 19, 30), estado: "hecho", lugar: "Unidad de quemados", responsable: "Dra. Paula Núñez" },
+        { id: "d3", titulo: "Revisión de la piel", descripcion: "La piel está sanando bien.", fecha: at(-8, 10, 0), estado: "hecho", lugar: "Unidad de quemados", responsable: "Dra. Paula Núñez" },
+        { id: "d4", titulo: "Alta a casa", descripcion: "¡A casa! Con indicaciones para cuidar la piel.", fecha: at(-4, 12, 0), estado: "hecho", lugar: "Piso 2", responsable: "Dra. Paula Núñez" },
+        { id: "d5", titulo: "Primera sesión de rehabilitación", descripcion: "Ejercicios para que el brazo se mueva sin que la cicatriz lo jale.", fecha: at(3, 10, 0), estado: "pendiente", lugar: "Por elegir, cerca de casa", responsable: "Terapia física" },
+      ],
+      medicamentos: [
+        { id: "dm1", nombre: "Ibuprofeno", dosis: "200 mg", via: "Por la boca", para_que: "Quitar el dolor", horarios: ["08:00", "16:00", "22:00"], desde: day(-4), hasta: day(3), indicaciones: "Con comida" },
+        { id: "dm2", nombre: "Crema cicatrizante", dosis: "Capa delgada", via: "En la piel", para_que: "Que la piel sane suave", horarios: ["09:00", "21:00"], desde: day(-4), hasta: day(30), indicaciones: "Con las manos limpias" },
+      ],
+      citas: [
+        { id: "dc1", titulo: "Terapia física", tipo: "terapia", inicio: at(3, 10, 0), fin: at(3, 11, 0), lugar: "Por elegir, cerca de casa", con_quien: "Terapia física", indicaciones: "Ropa de manga corta" },
+        { id: "dc2", titulo: "Revisión de la quemadura", tipo: "consulta", inicio: at(6, 9, 30), fin: at(6, 10, 0), lugar: "Consulta externa · Consultorio 3", con_quien: "Dra. Paula Núñez", indicaciones: "" },
+      ],
+      documentos: [
+        { id: "dd1", titulo: "Resumen de alta", tipo: "Alta", fecha: day(-4), resumen: "Buena evolución. Continuar curaciones y rehabilitación." },
+        { id: "dd2", titulo: "Cuidados de la piel en casa", tipo: "Indicaciones", fecha: day(-4), resumen: "Crema dos veces al día, evitar el sol directo, ropa suave." },
+      ],
+    },
+    // Adulta mayor en casa después de una cirugía de cadera (Cerca de mí → la etapa se calcula con el alta)
+    "WW-7702-44": {
+      id: "pac-7702",
+      codigo: "WW-7702-44",
+      nombre: "Carmen Ortega",
+      apodo: "Doña Carmen",
+      fecha_nacimiento: "1946-06-21",
+      tipo: "internado",
+      hospital: "Hospital General del Valle",
+      area: "Ya en casa",
+      cuarto: "",
+      tipo_sangre: "O-",
+      alergias: ["Ácido acetilsalicílico"],
+      diagnosticos: ["Fractura de cadera (operada)"],
+      contacto_emergencia: "Luis Ortega (hijo) · 55 1357 2468",
+      apoyos_sugeridos: ["fisioterapia", "farmacias"],
+      equipo: [],
+      procedimientos: [
+        { id: "o1", titulo: "Llegada a urgencias", descripcion: "Radiografía de la cadera.", fecha: at(-16, 17, 0), estado: "hecho", lugar: "Urgencias", responsable: "Equipo de urgencias" },
+        { id: "o2", titulo: "Cirugía de cadera", descripcion: "Fijaron el hueso para que sane.", fecha: at(-15, 9, 0), estado: "hecho", lugar: "Quirófano 1", responsable: "Dr. Ramón Vega" },
+        { id: "o3", titulo: "Primeros pasos con andadera", descripcion: "Caminó unos pasos con ayuda.", fecha: at(-13, 11, 0), estado: "hecho", lugar: "Piso 4", responsable: "Fisioterapia" },
+        { id: "o4", titulo: "Alta a casa", descripcion: "¡A casa con la andadera!", fecha: at(-10, 13, 0), estado: "hecho", lugar: "Piso 4", responsable: "Dr. Ramón Vega" },
+      ],
+      medicamentos: [
+        { id: "om1", nombre: "Paracetamol", dosis: "500 mg", via: "Por la boca", para_que: "Quitar el dolor", horarios: ["08:00", "14:00", "20:00"], desde: day(-10), hasta: day(10), indicaciones: "Después de comer" },
+        { id: "om2", nombre: "Calcio con vitamina D", dosis: "1 tableta", via: "Por la boca", para_que: "Huesos más fuertes", horarios: ["09:00"], desde: day(-10), hasta: day(90), indicaciones: "Con el desayuno" },
+      ],
+      citas: [
+        { id: "oc1", titulo: "Retiro de puntos", tipo: "consulta", inicio: at(2, 10, 0), fin: at(2, 10, 30), lugar: "Consulta externa · Consultorio 8", con_quien: "Enf. Lucía Mora", indicaciones: "Venir acompañada" },
+        { id: "oc2", titulo: "Revisión con traumatología", tipo: "consulta", inicio: at(5, 11, 0), fin: at(5, 11, 30), lugar: "Consulta externa · Consultorio 8", con_quien: "Dr. Ramón Vega", indicaciones: "Traer radiografías" },
+      ],
+      documentos: [
+        { id: "od1", titulo: "Resumen de alta", tipo: "Alta", fecha: day(-10), resumen: "Cirugía sin complicaciones. Caminar con andadera y fisioterapia." },
+        { id: "od2", titulo: "Ejercicios para casa", tipo: "Indicaciones", fecha: day(-10), resumen: "Ejercicios suaves de piernas tres veces al día." },
+      ],
+    },
   };
 
   const asignaciones = {
-    "REC-0042": ["WW-2048-17", "WW-3301-09"],
-    "REC-0107": ["WW-2048-17", "WW-3301-09"],
+    "REC-0042": ["WW-2048-17", "WW-3301-09", "WW-5120-03", "WW-7702-44"],
+    "REC-0107": ["WW-2048-17", "WW-3301-09", "WW-5120-03", "WW-7702-44"],
   };
 
   // Avisos que recepción manda a cada paciente
