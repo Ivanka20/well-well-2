@@ -87,9 +87,9 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
    **Estado previo:** SQL ejecutado en Supabase para crear su perfil y su registro de paciente. Comprobación:
    
       create or replace function public.mi_paciente_id() returns uuid
-language sql stable security definer set search_path = public as $$
-  select id from public.pacientes where perfil_id = auth.uid()
-$$;
+      language sql stable security definer set search_path = public as $$
+      select id from public.pacientes where perfil_id = auth.uid()
+      $$;
 
    **Output real:** No da ningún mensaje, solo dirige a su sesión e información dentro de la app.
 
