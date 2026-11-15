@@ -1,6 +1,6 @@
 **BITÁCORA DE PROMPTS**
 
-**Paso 1. Especificación de función:**
+**Paso 1. Especificación de función**
 - **¿Qué hace?:** Es una nueva funcionalidad de Well Well diseñada para ayudar a los pacientes y sus familiares a encontrar servicios médicos y de rehabilitación después del alta hospitalaria verificados por especialistas del hospital y recomendados según sea el caso. Mediante la integración con OpenStreetMap y Overpass API, permite buscar hospitales, clínicas, centros de fisioterapia y farmacias según la ubicación del usuario, la categoría del servicio y la distancia deseada. La aplicación obtiene información de establecimientos reales, calcula su proximidad y presenta los resultados en un mapa interactivo y una lista organizada con datos de contacto y opciones para llegar al lugar. Su objetivo es facilitar la continuidad de la recuperación y reducir las dificultades que enfrentan las familias al buscar servicios de apoyo fuera del hospital.
 - **Qué datos/inputs necesita:**
    1. Ubicación del usuario que puede obtenerse mediante GPS, con autorización, o introducirse manualmente mediante una dirección o ciudad.
@@ -10,7 +10,7 @@
    5. Datos obtenidos automáticamente mediante la API: nombre del establecimiento, coordenadas geográficas, dirección, categoría, teléfono, sitio web y características de accesibilidad, cuando estén registrados.
 - **Cómo se sabrá que funciona:** Se comprobará que funciona mediante pruebas de búsqueda con diferentes ubicaciones, categorías y radios de distancia. Se considerará exitosa cuando la aplicación pueda conectarse correctamente a Overpass API, obtener establecimientos reales de OpenStreetMap y mostrar los resultados correspondientes a los filtros seleccionados. También se verificará que las distancias calculadas sean correctas, que los establecimientos aparezcan en el mapa en sus ubicaciones correspondientes y que la información disponible (nombre, dirección y datos de contacto) coincida con los registros obtenidos de la API.
 
-**Paso 2. Registro de prueba:**
+**Paso 2. Registro de prueba**
 
 **Prompt:**
 
@@ -61,3 +61,36 @@ Permitir que el familiar busque establecimientos que tengan características com
 * Baños adaptados.
 Esto es especialmente relevante para pacientes con movilidad limitada. Importante: solo mostrarías estas características cuando estén registradas en los datos e incluir recomendaciones según la etapa de recuperación: La app podría utilizar información no sensible del proceso de recuperación para sugerir categorías de búsqueda.
 Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi carpeta de github."
+
+**Lo que la IA propuso que no coincidía con tu especificación:** La IA me dio una propuesta que no completaba mis instrucciones, solo las cumplía a medias, así que mandé este prompt: "Cuando el usuario ingresa su búsqueda, aparece un mensaje de que ya encontró x cantidad de lugares, pero no especifica los nombres de los lugares. Arregla eso. También vuelve a mostrar el mapa señalando los lugares encontrados y señalando una ruta para llegar al lugar de destino a partir del lugar que puso el usuario como referencia".
+
+**Mi decisión:** REVISIÓN. Aunque había incorporado gran parte de las funciones que describí, identifiqué que algunos elementos importantes de mi especificación no se estaban cumpliendo completamente. En particular, la herramienta mostraba un mensaje indicando cuántos establecimientos había encontrado, pero no presentaba los nombres ni la información específica de cada uno. Además, el mapa ya no mostraba visualmente los lugares encontrados ni la ruta para llegar al establecimiento seleccionado desde la ubicación de referencia del usuario.
+
+**Paso 3. Validar que funciona de verdad**
+**Qué especifiqué que debía hacer:** Cuando un paciente escribe su ID y su código de acceso, la app los valida contra Supabase. Si son correctos y el ID tiene datos asignados, entra a su espacio y ve sus datos. Si el código es incorrecto, muestra "ID o código de acceso incorrectos".
+
+**CASO DE PRUEBA A**
+
+   **Input exacto:** pestaña «Paciente o familiar», ID de paciente WW-2048-17, código de acceso 123456, botón «Entrar →».
+   
+   **Estado previo:** usuario ww-2048-17@paciente.wellwell.app creado en Supabase Authentication, sin filas en perfiles ni pacientes.
+      
+   **Output real:** ! Tu ID existe pero aún no tiene datos asignados: <img width="563" height="528" alt="image" src="https://github.com/user-attachments/assets/17b5d1b3-d7ac-46fa-bb66-c8bb98387ccb" />
+
+
+**CASO PRUEBA B**
+
+   **Input exacto:** pestaña «Paciente o familiar», ID de paciente WW-2048-17, código de acceso 123456, botón «Entrar →».
+   
+   **Estado previo:** SQL ejecutado en Supabase para crear su perfil y su registro de paciente. Comprobación:
+      create or replace function public.mi_paciente_id() returns uuid
+language sql stable security definer set search_path = public as $$
+  select id from public.pacientes where perfil_id = auth.uid()
+$$;
+
+   **Output real:** No da ningún mensaje, solo dirige a su sesión e información dentro de la app.
+
+**Mi decisión:** ACEPTAR. La IA me dió exactamente el código para copiar en SQL Editor el Supabase para crear el usuario de prueba con su contraseña y luego al no contar con información sobre ese usuario, Claude Code me dio el código necesario para copiarlo en SQL Editor y establecer la información de nuestro usuario de prueba: <img width="1239" height="502" alt="image" src="https://github.com/user-attachments/assets/ca035344-fd8c-4f71-93fa-bef008eae98c" />
+
+
+**Documentación del chatbot "Lupita"**
