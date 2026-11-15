@@ -289,8 +289,8 @@
   /* ---------- Cerca de mí: lugares guardados ----------
      Paciente con cuenta en Supabase → tabla lugares_guardados.
      Sin sesión o en modo demo → solo en este navegador.
-     Solo se guarda el ID de Google (place_id) y la categoría:
-     los datos del lugar se vuelven a pedir a Places API. */
+     Se guarda el ID de OpenStreetMap (place_id, p. ej. "node/123")
+     y los datos que se muestran (nombre, dirección, accesibilidad). */
   const PLACES_KEY = "ww-lugares-v1";
   const localPlaces = () => { try { return JSON.parse(localStorage.getItem(PLACES_KEY) || "[]"); } catch (_) { return []; } };
   const setLocalPlaces = (l) => { try { localStorage.setItem(PLACES_KEY, JSON.stringify(l.slice(0, 200))); } catch (_) {} };
@@ -299,8 +299,8 @@
   async function places() {
     if (cloudPlaces()) {
       try {
-        const rows = await must(sb.from("lugares_guardados").select("place_id, categoria, created_at").eq("paciente_id", state.me.id).order("created_at", { ascending: false }));
-        return rows.map((r) => ({ id: r.place_id, cat: r.categoria, savedAt: r.created_at }));
+        const rows = await must(sb.from("lugares_guardados").select("place_id, categoria, datos, created_at").eq("paciente_id", state.me.id).order("created_at", { ascending: false }));
+        return rows.map((r) => ({ ...(r.datos || {}), id: r.place_id, cat: r.categoria, savedAt: r.created_at }));
       } catch (_) { /* si la tabla aún no existe, se usa el navegador */ }
     }
     return localPlaces();
@@ -308,7 +308,7 @@
   async function savePlace(pl) {
     if (cloudPlaces()) {
       try {
-        await must(sb.from("lugares_guardados").upsert({ paciente_id: state.me.id, place_id: pl.id, categoria: pl.cat || null }, { onConflict: "paciente_id,place_id" }));
+        await must(sb.from("lugares_guardados").upsert({ paciente_id: state.me.id, place_id: pl.id, categoria: pl.cat || null, datos: pl }, { onConflict: "paciente_id,place_id" }));
         return;
       } catch (_) {}
     }

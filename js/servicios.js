@@ -4,11 +4,15 @@
    después del alta: hospitales, rehabilitación, fisioterapia,
    farmacias, laboratorios y atención especializada.
 
-   Datos y mapa: Google Maps Platform
-     - Places API (New)  → Place.searchNearby / Place.searchByText
-     - Maps JavaScript API → mapa, marcadores y círculo del radio
-   La clave se lee de /api/maps-key (variable de entorno en Vercel)
-   o, en tu computadora, de js/config.js (ver js/config.example.js).
+   Sin mapa y sin claves: la familia escribe qué busca, dice
+   dónde, y la app devuelve una lista con nombre y dirección.
+
+   Datos: OpenStreetMap (gratis, sin registro)
+     - Overpass API → establecimientos reales cercanos
+     - Nominatim    → dirección escrita → coordenadas;
+                      coordenadas → dirección (cuando el lugar
+                      no tiene su dirección registrada); y
+                      respaldo de búsqueda si Overpass está saturado
 
    Uso:  Servicios.mount(contenedor, { patient, cat, back })
          Servicios.detect("¿dónde hay fisioterapia?")  (para Lupita)
@@ -23,57 +27,60 @@
   const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (_) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
   const toast = (m) => (window.wwToast ? window.wwToast(m) : null);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const CENTRO_INICIAL = { lat: 23.6345, lon: -102.5528, zoom: 4 }; // México
+  /* ---------- servicios de OpenStreetMap ---------- */
+  // Si un servidor de Overpass está saturado se intenta con el siguiente
+  // Si los dos están saturados, se usa Nominatim como respaldo (ver nominatimSearch)
+  const OVERPASS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  ];
+  const OVERPASS_TIMEOUT = 10000;
+  const NOMINATIM = "https://nominatim.openstreetmap.org";
+
   const RADIOS = [1, 5, 10, 20];
   const PAGE = 20;
   const PREFS_KEY = "ww-svc-prefs";
   const ETAPA_KEY = "ww-svc-etapa";
+  const DIR_KEY = "ww-svc-direcciones";
   const LOCAL_SAVED_KEY = "ww-lugares-v1";
 
-  // Campos que pedimos a Places API. Cada campo influye en el costo
-  // (teléfono, web, horario y accesibilidad son de nivel "Enterprise").
-  const FIELDS = [
-    "id", "displayName", "formattedAddress", "location", "primaryType", "primaryTypeDisplayName",
-    "nationalPhoneNumber", "internationalPhoneNumber", "websiteURI", "regularOpeningHours",
-    "accessibilityOptions", "googleMapsURI", "businessStatus",
-  ];
-
   /* =========================================================
-     A. CATEGORÍAS → tipos de Places API (Tabla A) o texto
-     "nearby": Place.searchNearby con includedTypes (máx. 20, ordenados por distancia)
-     "text":   Place.searchByText dentro del área (para lo que no tiene tipo propio)
+     A. CATEGORÍAS · cada una se traduce a etiquetas de OSM
+     (los filtros con "name" buscan por nombre porque muchos
+     lugares no tienen la etiqueta exacta)
      ========================================================= */
   const CATS = {
     hospitales: {
       label: "Hospitales y centros médicos", short: "hospitales y centros médicos", glyph: "✚",
       tip: "Sirven para revisiones médicas o si algo no se ve bien.",
-      nearby: ["hospital", "doctor"],
+      q: ['["amenity"="hospital"]', '["healthcare"="hospital"]', '["amenity"="clinic"]', '["healthcare"="clinic"]', '["healthcare"="centre"]', '["amenity"="doctors"]', '["healthcare"="doctor"]'],
     },
     rehabilitacion: {
       label: "Clínicas de rehabilitación", short: "clínicas de rehabilitación", glyph: "↻",
       tip: "Ahí pueden continuar las sesiones para recuperar fuerza y movimiento.",
-      text: "centro de rehabilitación física",
+      q: ['["healthcare"="rehabilitation"]', '["healthcare:speciality"~"rehabilitation|physical_medicine"]', '["name"~"rehabilit",i]'],
     },
     fisioterapia: {
       label: "Fisioterapia", short: "centros de fisioterapia", glyph: "≈",
       tip: "Ahí guían los ejercicios para mover el cuerpo sin lastimarse.",
-      nearby: ["physiotherapist"], text: "fisioterapia",
+      q: ['["healthcare"="physiotherapist"]', '["healthcare:speciality"~"physiotherapy"]', '["name"~"fisioter|physio",i]'],
     },
     farmacias: {
       label: "Farmacias", short: "farmacias", glyph: "℞",
       tip: "Para surtir recetas y comprar material de curación.",
-      nearby: ["pharmacy", "drugstore"],
+      q: ['["amenity"="pharmacy"]', '["healthcare"="pharmacy"]'],
     },
     laboratorios: {
       label: "Laboratorios médicos", short: "laboratorios médicos", glyph: "◉",
       tip: "Para los estudios de sangre u orina que pida su médico.",
-      nearby: ["medical_lab"], text: "laboratorio de análisis clínicos",
+      q: ['["healthcare"="laboratory"]', '["healthcare"="sample_collection"]', '["name"~"laboratorio cl[ií]nico|laboratorios? m[eé]dicos?|an[aá]lisis cl[ií]nicos|laboratorio de an[aá]lisis",i]'],
     },
     especializada: {
       label: "Atención especializada", short: "centros de atención especializada", glyph: "★",
       tip: "Especialistas y terapias como la ocupacional o de lenguaje.",
-      text: "clínica de especialidades médicas",
+      q: ['["healthcare"~"^(occupational_therapist|speech_therapist|psychotherapist|audiologist|optometrist|podiatrist|dialysis|counselling)$"]', '["healthcare:speciality"]["healthcare:speciality"!~"^(general|general_practice|family_medicine)$"]'],
     },
   };
   const CAT_ORDER = ["hospitales", "rehabilitacion", "fisioterapia", "farmacias", "laboratorios", "especializada"];
@@ -121,33 +128,71 @@
   }
 
   /* =========================================================
-     B. Accesibilidad: SOLO lo que Google tiene registrado
-     (accessibilityOptions). Google no registra elevadores.
+     B. Accesibilidad: SOLO lo que está registrado en OSM
      ========================================================= */
   const ACCESOS = [
     { k: "entrada", label: "Entrada para silla de ruedas" },
     { k: "estacionamiento", label: "Estacionamiento accesible" },
+    { k: "elevador", label: "Elevador" },
     { k: "banos", label: "Baños adaptados" },
   ];
-  function accesibilidad(a) {
-    a = a || {};
+  const first = (t, keys) => { for (const k of keys) if (t[k] != null && t[k] !== "") return t[k]; return null; };
+  function siNo(v) {
+    if (v == null) return null;
+    v = norm(v).trim();
+    if (/^(yes|designated|true|si)$/.test(v) || /^[1-9]\d*$/.test(v)) return "si";
+    if (v === "limited") return "limitado";
+    if (/^(no|false|0)$/.test(v)) return "no";
+    return null; // valor desconocido: no lo mostramos
+  }
+  function accesibilidad(t) {
     const out = [];
-    const add = (k, v, si, no) => { if (typeof v === "boolean") out.push({ k, ok: v, txt: v ? si : no }); };
-    add("entrada", a.hasWheelchairAccessibleEntrance, "Entrada accesible para silla de ruedas", "Entrada sin acceso para silla de ruedas");
-    add("estacionamiento", a.hasWheelchairAccessibleParking, "Estacionamiento accesible", "Sin estacionamiento accesible");
-    add("banos", a.hasWheelchairAccessibleRestroom, "Baños adaptados", "Sin baños adaptados");
-    add("asientos", a.hasWheelchairAccessibleSeating, "Asientos accesibles", "Sin asientos accesibles");
+    const add = (k, v, si, lim, no) => { const x = siNo(v); if (x) out.push({ k, ok: x === "si", lim: x === "limitado", txt: x === "si" ? si : x === "limitado" ? lim : no }); };
+    add("entrada", t.wheelchair, "Entrada accesible para silla de ruedas", "Entrada con accesibilidad limitada", "Entrada sin acceso para silla de ruedas");
+    add("estacionamiento", first(t, ["capacity:disabled", "parking:disabled", "disabled_parking"]), "Estacionamiento accesible", "Estacionamiento accesible limitado", "Sin estacionamiento accesible");
+    add("elevador", first(t, ["elevator", "building:elevator", "lift"]), "Tiene elevador", "Elevador con acceso limitado", "Sin elevador");
+    add("banos", first(t, ["toilets:wheelchair", "toilets:disability"]), "Baños adaptados", "Baños con adaptación limitada", "Sin baños adaptados");
     return out;
   }
 
   /* =========================================================
-     C. Fichas
+     C. Resultados: nombre y dirección
      ========================================================= */
-  const TIPOS = {
-    hospital: "Hospital", doctor: "Consultorio médico", pharmacy: "Farmacia", drugstore: "Farmacia",
-    physiotherapist: "Fisioterapia", medical_lab: "Laboratorio", dentist: "Dentista", dental_clinic: "Clínica dental",
+  const ESPECIALIDAD = {
+    paediatrics: "Pediatría", pediatrics: "Pediatría", orthopaedics: "Ortopedia", orthopedics: "Ortopedia", cardiology: "Cardiología",
+    dermatology: "Dermatología", neurology: "Neurología", ophthalmology: "Oftalmología", gynaecology: "Ginecología", obstetrics: "Obstetricia",
+    physiotherapy: "Fisioterapia", rehabilitation: "Rehabilitación", physical_medicine: "Medicina física", psychiatry: "Psiquiatría",
+    psychology: "Psicología", geriatrics: "Geriatría", trauma: "Traumatología", traumatology: "Traumatología", plastic_surgery: "Cirugía plástica",
+    dentistry: "Odontología", internal: "Medicina interna", oncology: "Oncología", nephrology: "Nefrología", otolaryngology: "Otorrinolaringología",
+    urology: "Urología", general: "Medicina general", surgery: "Cirugía", radiology: "Radiología", endocrinology: "Endocrinología",
+    gastroenterology: "Gastroenterología", pulmonology: "Neumología", nutrition: "Nutrición", speech_therapy: "Terapia de lenguaje",
+    occupational_therapy: "Terapia ocupacional", allergology: "Alergología", rheumatology: "Reumatología",
   };
-  const DEFAULT_TIPO = { rehabilitacion: "Rehabilitación", fisioterapia: "Fisioterapia", laboratorios: "Laboratorio", farmacias: "Farmacia", hospitales: "Centro médico", especializada: "Atención especializada" };
+  const espLabel = (v) => String(v || "").split(";").map((x) => ESPECIALIDAD[x.trim()] || x.trim().replace(/_/g, " ")).filter(Boolean).slice(0, 2).join(", ");
+
+  function tipoDe(t, cat) {
+    const h = t.healthcare, a = t.amenity, sp = t["healthcare:speciality"];
+    if (a === "hospital" || h === "hospital") return "Hospital";
+    if (a === "pharmacy" || h === "pharmacy") return "Farmacia";
+    if (h === "physiotherapist") return "Fisioterapia";
+    if (h === "rehabilitation") return "Rehabilitación";
+    if (h === "laboratory" || h === "sample_collection") return "Laboratorio";
+    const extra = { occupational_therapist: "Terapia ocupacional", speech_therapist: "Terapia de lenguaje", psychotherapist: "Psicoterapia", audiologist: "Audiología", optometrist: "Optometría", podiatrist: "Podología", dialysis: "Diálisis", counselling: "Orientación psicológica", dentist: "Dentista" };
+    if (extra[h]) return extra[h];
+    if (a === "dentist") return "Dentista";
+    if (a === "clinic" || h === "clinic" || h === "centre") return sp ? "Clínica · " + espLabel(sp) : "Clínica o centro de salud";
+    if (a === "doctors" || h === "doctor") return sp ? "Consultorio · " + espLabel(sp) : "Consultorio médico";
+    if (sp) return espLabel(sp);
+    return { rehabilitacion: "Rehabilitación", fisioterapia: "Fisioterapia", laboratorios: "Laboratorio", farmacias: "Farmacia", hospitales: "Centro médico", especializada: "Atención especializada" }[cat] || "Lugar";
+  }
+
+  function direccion(t) {
+    if (t["addr:full"]) return t["addr:full"];
+    const calle = [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" ");
+    if (!calle && !t["addr:suburb"] && !t["addr:neighbourhood"]) return "";
+    return [calle, first(t, ["addr:suburb", "addr:neighbourhood", "addr:quarter"]), first(t, ["addr:city", "addr:municipality", "addr:district"]), t["addr:postcode"] ? "C.P. " + t["addr:postcode"] : ""]
+      .filter(Boolean).join(", ");
+  }
 
   function km(a, b) {
     const R = 6371, rad = Math.PI / 180;
@@ -156,148 +201,182 @@
     return 2 * R * Math.asin(Math.sqrt(x));
   }
   const fDist = (d) => (d == null ? "" : d < 1 ? `${Math.max(10, Math.round((d * 1000) / 10) * 10)} m` : `${d.toFixed(d < 10 ? 1 : 0)} km`);
-  const safeUrl = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch (_) { return ""; } };
 
-  function toPlace(pl, cat, origin) {
-    if (!pl || !pl.location) return null;
-    const lat = pl.location.lat(), lon = pl.location.lng();
-    const hours = (pl.regularOpeningHours && pl.regularOpeningHours.weekdayDescriptions) || [];
+  function toPlace(el, cat, origin) {
+    const t = el.tags || {};
+    const lat = el.lat != null ? el.lat : el.center && el.center.lat;
+    const lon = el.lon != null ? el.lon : el.center && el.center.lon;
+    if (lat == null || lon == null) return null;
+    const addr = direccion(t);
     return {
-      id: pl.id,
-      name: pl.displayName || "",
-      tipo: pl.primaryTypeDisplayName || TIPOS[pl.primaryType] || DEFAULT_TIPO[cat] || "Servicio de salud",
+      id: el.type + "/" + el.id,
+      name: t["name:es"] || t.name || t.brand || t.operator || "",
+      tipo: tipoDe(t, cat),
       cat, lat, lon,
-      addr: pl.formattedAddress || "",
-      phone: pl.nationalPhoneNumber || pl.internationalPhoneNumber || "",
-      website: safeUrl(pl.websiteURI || ""),
-      hours,
-      acc: accesibilidad(pl.accessibilityOptions),
-      gmaps: safeUrl(pl.googleMapsURI || ""),
-      closed: pl.businessStatus === "CLOSED_PERMANENTLY",
+      addr,
+      addrAprox: false,
+      acc: accesibilidad(t),
       dist: origin ? km(origin, { lat, lon }) : null,
     };
   }
 
-  /* =========================================================
-     Google Maps Platform: carga y consultas
-     ========================================================= */
-  let gmPromise = null;
-  let authFailed = false;
-
-  async function getConfig() {
-    try {
-      const r = await fetch("/api/maps-key", { headers: { Accept: "application/json" } });
-      if (r.ok) { const j = await r.json(); if (j && j.key) return j; }
-    } catch (_) {}
-    // en tu computadora: js/config.js (no se sube a GitHub)
-    if (!window.WW_CONFIG) {
-      await new Promise((res) => {
-        const s = document.createElement("script");
-        s.src = "js/config.js"; s.onload = res; s.onerror = res;
-        document.head.appendChild(s);
-      });
-    }
-    const c = window.WW_CONFIG || {};
-    return { key: c.googleMapsKey || "", mapId: c.googleMapsMapId || "", region: c.region || "MX" };
-  }
-
-  function loadGoogle() {
-    if (gmPromise) return gmPromise;
-    gmPromise = (async () => {
-      const cfg = await getConfig();
-      if (!cfg.key) { const e = new Error("sin-clave"); e.code = "NO_KEY"; throw e; }
-      // Google llama a esta función si la clave no es válida o no tiene permisos
-      window.gm_authFailure = () => { authFailed = true; mostrarErrorClave(); };
-      if (!(window.google && google.maps && google.maps.importLibrary)) {
-        await new Promise((res, rej) => {
-          window.__wwMapsReady = res;
-          const s = document.createElement("script");
-          s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.key)}&v=weekly&loading=async&language=es&region=${encodeURIComponent(cfg.region || "MX")}&callback=__wwMapsReady`;
-          s.async = true;
-          s.onerror = () => rej(new Error("No se pudo cargar Google Maps"));
-          document.head.appendChild(s);
-        });
+  // Un mismo lugar puede venir como punto y como edificio: nos quedamos con uno
+  function dedupe(list) {
+    const seen = new Map(), out = [];
+    list.sort((a, b) => a.dist - b.dist).forEach((p) => {
+      const key = norm(p.name);
+      if (key) {
+        const prev = seen.get(key) || [];
+        if (prev.some((q) => km(q, p) < 0.15)) return;
+        prev.push(p); seen.set(key, prev);
       }
-      const [maps, places, marker] = await Promise.all([
-        google.maps.importLibrary("maps"),
-        google.maps.importLibrary("places"),
-        google.maps.importLibrary("marker"),
-      ]);
-      return {
-        Map: maps.Map, Circle: maps.Circle, InfoWindow: maps.InfoWindow,
-        Place: places.Place, Rank: places.SearchNearbyRankPreference,
-        Marker: marker.AdvancedMarkerElement,
-        mapId: cfg.mapId || "DEMO_MAP_ID",
-        region: (cfg.region || "MX").toLowerCase(),
-      };
-    })();
-    gmPromise.catch(() => { gmPromise = null; });
-    return gmPromise;
+      out.push(p);
+    });
+    return out;
   }
 
-  // rectángulo que contiene el círculo de búsqueda (para searchByText)
+  /* ---------- consultas a Overpass ---------- */
+  // Texto libre → expresión que ignora acentos ("teleton" encuentra "Teletón")
+  function textoARegex(s) {
+    const MAP = { a: "[aá]", e: "[eé]", i: "[ií]", o: "[oó]", u: "[uúü]", n: "[nñ]" };
+    return norm(s).replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40)
+      .split("").map((c) => MAP[c] || c).join("");
+  }
+
+  function buildQuery(query, o, radiusKm) {
+    const around = `(around:${Math.round(radiusKm * 1000)},${o.lat.toFixed(5)},${o.lon.toFixed(5)})`;
+    let parts;
+    if (query.cat) {
+      parts = CATS[query.cat].q.map((sel) => `  ${sel.startsWith('["name"') ? "nw" : "nwr"}${sel}${around};`);
+    } else {
+      parts = [`  nw["name"~"${textoARegex(query.text)}",i][!"highway"]${around};`];
+    }
+    return `[out:json][timeout:25];\n(\n${parts.join("\n")}\n);\nout center tags;`;
+  }
+
+  async function overpassOnce(url, q) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), OVERPASS_TIMEOUT);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "data=" + encodeURIComponent(q),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (data.remark && /error|timed out/i.test(data.remark) && !(data.elements || []).length) throw new Error(data.remark);
+      return data.elements || [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Prueba cada servidor de Overpass una vez (máx. ~10 s cada uno)
+  async function overpass(q, onTry) {
+    let lastErr = null;
+    for (let i = 0; i < OVERPASS.length; i++) {
+      if (onTry && i) onTry("El servidor está muy ocupado, probando con otro…");
+      try { return await overpassOnce(OVERPASS[i], q); } catch (ex) { lastErr = ex; }
+    }
+    throw lastErr || new Error("Sin respuesta");
+  }
+
+  /* ---------- Respaldo: Nominatim (también OpenStreetMap, sin clave) ----------
+     Entiende etiquetas exactas como "[healthcare=physiotherapist]" y devuelve
+     nombre y dirección completa. Máximo 40 resultados por consulta. */
+  const NOM_TERMS = {
+    farmacias: ["[amenity=pharmacy]"],
+    hospitales: ["[amenity=hospital]", "[amenity=clinic]", "[amenity=doctors]"],
+    rehabilitacion: ["[healthcare=rehabilitation]", "rehabilitación"],
+    fisioterapia: ["[healthcare=physiotherapist]", "fisioterapia"],
+    laboratorios: ["[healthcare=laboratory]", "laboratorio clínico"],
+    especializada: ["[healthcare=occupational_therapist]", "[healthcare=speech_therapist]", "especialidades médicas"],
+  };
+  const NOM_OK_CLASS = /^(amenity|healthcare|office|shop|craft)$/;
+  const NOM_BAD_TYPE = /^(university|college|school|research|research_institute|bus_stop|veterinary|parking)$/;
+
   function boundsOf(o, radiusKm) {
     const dLat = radiusKm / 111.32;
     const dLon = radiusKm / (111.32 * Math.cos((o.lat * Math.PI) / 180));
     return { north: o.lat + dLat, south: o.lat - dLat, east: o.lon + dLon, west: o.lon - dLon };
   }
 
-  async function placesSearch(cat, o, radiusKm) {
-    const gm = await loadGoogle();
-    const c = CATS[cat];
-    const calls = [];
-    if (c.nearby) {
-      calls.push(gm.Place.searchNearby({
-        fields: FIELDS,
-        locationRestriction: { center: { lat: o.lat, lng: o.lon }, radius: radiusKm * 1000 },
-        includedTypes: c.nearby,
-        maxResultCount: 20,
-        rankPreference: gm.Rank.DISTANCE,
-        language: "es",
-        region: gm.region,
-      }));
-    }
-    if (c.text) {
-      calls.push(gm.Place.searchByText({
-        textQuery: c.text,
-        fields: FIELDS,
-        locationRestriction: boundsOf(o, radiusKm),
-        maxResultCount: 20,
-        language: "es",
-        region: gm.region,
-      }));
-    }
-    const settled = await Promise.allSettled(calls);
-    const ok = settled.filter((r) => r.status === "fulfilled");
-    if (!ok.length) throw settled[0].reason || new Error("Sin respuesta");
-    const all = ok.flatMap((r) => r.value.places || []);
-    const lleno = ok.some((r) => (r.value.places || []).length >= 20);
-    const seen = new Set();
-    const list = all.filter((p) => p && p.id && !seen.has(p.id) && seen.add(p.id));
-    return { list, lleno };
+  function dirNominatim(a) {
+    a = a || {};
+    const calle = [a.road || a.pedestrian || a.footway, a.house_number].filter(Boolean).join(" ");
+    return [calle, a.neighbourhood || a.suburb || a.quarter, a.city || a.town || a.village || a.borough || a.municipality, a.postcode ? "C.P. " + a.postcode : ""]
+      .filter(Boolean).join(", ");
   }
 
+  async function nominatimSearch(query, o, radiusKm) {
+    const b = boundsOf(o, radiusKm);
+    const vb = `${b.west.toFixed(5)},${b.north.toFixed(5)},${b.east.toFixed(5)},${b.south.toFixed(5)}`;
+    const terms = query.cat ? NOM_TERMS[query.cat] : [query.text];
+    const out = [];
+    let respondio = false;
+    for (const term of terms) {
+      try {
+        const rows = await nominatim(`/search?format=jsonv2&limit=40&bounded=1&addressdetails=1&extratags=1&accept-language=es&viewbox=${vb}&q=${encodeURIComponent(term)}`);
+        respondio = true;
+        rows.forEach((r) => {
+          const cls = r.category || r.class;
+          if (!NOM_OK_CLASS.test(cls || "") || NOM_BAD_TYPE.test(r.type || "")) return;
+          const lat = +r.lat, lon = +r.lon;
+          const tags = { ...(r.extratags || {}), [cls]: r.type };
+          out.push({
+            id: `${r.osm_type}/${r.osm_id}`,
+            name: r.name || "",
+            tipo: tipoDe(tags, query.cat),
+            cat: query.cat || null, lat, lon,
+            addr: dirNominatim(r.address),
+            addrAprox: false,
+            acc: accesibilidad(tags),
+            dist: km(o, { lat, lon }),
+          });
+        });
+      } catch (_) { /* seguimos con el siguiente término */ }
+    }
+    if (!respondio) throw new Error("Nominatim no respondió");
+    return out;
+  }
+
+  /* ---------- Nominatim (máximo 1 consulta por segundo) ---------- */
+  let lastNom = 0;
+  async function nominatim(path) {
+    const wait = 1100 - (Date.now() - lastNom);
+    if (wait > 0) await sleep(wait);
+    lastNom = Date.now();
+    const res = await fetch(`${NOMINATIM}${path}`, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
   async function geocode(q) {
-    const gm = await loadGoogle();
-    const { places } = await gm.Place.searchByText({
-      textQuery: q,
-      fields: ["displayName", "formattedAddress", "location"],
-      maxResultCount: 5,
-      language: "es",
-      region: gm.region,
-    });
-    return (places || []).filter((p) => p.location).map((p) => ({
-      lat: p.location.lat(), lon: p.location.lng(),
-      label: p.formattedAddress || p.displayName || q,
-    }));
+    const rows = await nominatim(`/search?format=jsonv2&limit=5&accept-language=es&q=${encodeURIComponent(q)}`);
+    return rows.map((r) => ({ lat: +r.lat, lon: +r.lon, label: r.display_name }));
   }
   const shortLabel = (s) => String(s || "").split(",").slice(0, 3).join(",").trim();
 
+  // Dirección aproximada para lugares que no la tienen registrada
+  const dirCache = lsGet(DIR_KEY, {});
+  async function reverse(p) {
+    const k = p.lat.toFixed(5) + "," + p.lon.toFixed(5);
+    if (dirCache[k] != null) return dirCache[k];
+    const r = await nominatim(`/reverse?format=jsonv2&zoom=18&addressdetails=1&accept-language=es&lat=${p.lat}&lon=${p.lon}`);
+    const a = (r && r.address) || {};
+    const calle = [a.road || a.pedestrian || a.footway, a.house_number].filter(Boolean).join(" ");
+    const txt = [calle, a.neighbourhood || a.suburb || a.quarter, a.city || a.town || a.village || a.borough || a.municipality, a.postcode ? "C.P. " + a.postcode : ""]
+      .filter(Boolean).join(", ");
+    dirCache[k] = txt;
+    const keys = Object.keys(dirCache);
+    if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((x) => delete dirCache[x]);
+    lsSet(DIR_KEY, dirCache);
+    return txt;
+  }
+
   /* =========================================================
-     D. Mis lugares guardados
-     Por las reglas de Google solo guardamos el ID del lugar
-     (se puede guardar sin límite); los datos se vuelven a
-     pedir a Places API al abrir "Mis lugares guardados".
+     D. Mis lugares guardados (Store con Supabase; si no, navegador)
      ========================================================= */
   const savedApi = {
     async list() {
@@ -313,24 +392,7 @@
       lsSet(LOCAL_SAVED_KEY, lsGet(LOCAL_SAVED_KEY, []).filter((x) => x.id !== id));
     },
   };
-  const isGoogleId = (id) => typeof id === "string" && id.length > 10 && !id.includes("/"); // ignora guardados viejos de OSM
-  const detailCache = new Map();
-
-  async function fetchSaved(refs) {
-    const gm = await loadGoogle();
-    return Promise.all(refs.map(async (r) => {
-      if (detailCache.has(r.id)) return { ...detailCache.get(r.id), dist: S.origin ? km(S.origin, detailCache.get(r.id)) : null };
-      try {
-        const pl = new gm.Place({ id: r.id, requestedLanguage: "es" });
-        await pl.fetchFields({ fields: FIELDS });
-        const p = toPlace(pl, r.cat, S.origin);
-        if (p) detailCache.set(r.id, p);
-        return p || { id: r.id, missing: true };
-      } catch (_) {
-        return { id: r.id, missing: true };
-      }
-    }));
-  }
+  const slim = (p) => ({ id: p.id, name: p.name, tipo: p.tipo, cat: p.cat, lat: p.lat, lon: p.lon, addr: p.addr, addrAprox: p.addrAprox, acc: p.acc, savedAt: new Date().toISOString() });
 
   /* =========================================================
      E. Lupita: entender qué busca la familia
@@ -364,28 +426,27 @@
      ========================================================= */
   const prefs = lsGet(PREFS_KEY, {});
   const S = {
-    cat: null,
+    query: null,           // { cat } o { text } · lo que buscan
     origin: null,          // { lat, lon, label } (no se guarda: es la casa de la familia)
     radius: RADIOS.includes(prefs.radius) ? prefs.radius : 5,
     filters: new Set((prefs.filters || []).filter((k) => ACCESOS.some((a) => a.k === k))),
     results: [],
-    lleno: false,
     status: "idle",        // idle | loading | done | error
     error: "",
     shown: PAGE,
     tab: "buscar",
-    saved: [],             // [{ id, cat, savedAt }]
-    savedDetails: null,    // fichas de los guardados (pedidas a Google)
-    savedStatus: "idle",
+    saved: [],
     etapa: null,
     pickEtapa: false,
     candidates: [],
     patient: null,
   };
   const savePrefs = () => lsSet(PREFS_KEY, { radius: S.radius, filters: [...S.filters] });
+  const queryLabel = (q) => (q ? (q.cat ? CATS[q.cat].short : `«${q.text}»`) : "");
 
-  let root = null, map = null, gmRef = null, info = null, overlays = [], markers = {};
-  let seq = 0;
+  let root = null;
+  let seq = 0;        // búsquedas
+  let dirSeq = 0;     // relleno de direcciones
   const cache = new Map();
 
   function etapaActual() {
@@ -400,7 +461,7 @@
   function mount(container, opts) {
     opts = opts || {};
     S.patient = opts.patient || null;
-    if (opts.cat && CATS[opts.cat] && opts.cat !== S.cat) { S.cat = opts.cat; S.results = []; S.status = "idle"; S.shown = PAGE; }
+    if (opts.cat && CATS[opts.cat] && !(S.query && S.query.cat === opts.cat)) { S.query = { cat: opts.cat }; S.results = []; S.status = "idle"; S.shown = PAGE; }
     if (opts.cat) S.tab = "buscar";
     S.etapa = etapaActual();
     S.pickEtapa = false;
@@ -412,36 +473,30 @@
     root.innerHTML = `
       <a href="${esc(back)}" class="btn-back">${back === "#/" ? "← Volver" : "← Inicio"}</a>
       <h1 class="screen-title"><span data-cut="Cerca de mí" data-size="32" data-seed="7"></span></h1>
-      <p class="svc-intro">Hospitales, rehabilitación, farmacias y más, cerca de donde están. Todo en un solo lugar.</p>
+      <p class="svc-intro">Escriban qué necesitan y dónde están: les damos el nombre y la dirección de los lugares más cercanos.</p>
       <div class="seg svc-tabs" role="tablist" id="svcTabs"></div>
       <div class="svc-layout">
         <div class="svc-side" id="svcSide">
-          <section class="card svc-etapa" id="svcEtapa" aria-label="Recomendaciones según la etapa de recuperación"></section>
-
-          <form class="svc-lupita" id="svcLupita" autocomplete="off">
-            <span class="face" aria-hidden="true">${window.lupiSVG ? lupiSVG(38) : ""}</span>
-            <div class="svc-lupita-col">
-              <label for="svcLupitaIn">Cuéntale a Lupita qué necesitan</label>
-              <div class="svc-inline">
-                <input id="svcLupitaIn" maxlength="200" placeholder="Ej.: un lugar para su fisioterapia" />
-                <button type="submit" class="pill-slate">Ayúdame</button>
-              </div>
-              <p class="svc-lupita-msg" id="svcLupitaMsg" aria-live="polite"></p>
+          <form class="card svc-ask" id="svcAskForm" autocomplete="off">
+            <div class="svc-ask-head">
+              <span class="face" aria-hidden="true">${window.lupiSVG ? lupiSVG(38) : ""}</span>
+              <label for="svcQ" class="h-sub">1. ¿Qué buscan?</label>
             </div>
+            <div class="svc-inline">
+              <input id="svcQ" maxlength="120" placeholder="Ej.: fisioterapia para mi hijo, farmacia…" />
+              <button type="submit" class="pill-slate">Listo</button>
+            </div>
+            <p class="svc-understood" id="svcUnderstood" aria-live="polite"></p>
+            <div class="chips-row" id="svcCats" aria-label="Ideas de búsqueda"></div>
           </form>
 
-          <section class="block" id="svcStepCat">
-            <h2 class="h-sub">1. ¿Qué necesitan?</h2>
-            <div class="svc-cats" id="svcCats" role="radiogroup" aria-label="Tipo de servicio"></div>
-          </section>
-
           <section class="block" id="svcStepLoc">
-            <h2 class="h-sub">2. ¿Dónde buscamos?</h2>
+            <h2 class="h-sub">2. ¿Dónde están?</h2>
             <button type="button" class="btn btn-secondary" id="svcGeo">Usar mi ubicación actual</button>
             <form class="svc-inline" id="svcAddrForm" autocomplete="off">
               <label for="svcAddr" class="sr-only">Dirección, colonia o ciudad</label>
-              <input id="svcAddr" maxlength="160" placeholder="O escribe dirección, colonia o ciudad" />
-              <button type="submit" class="pill-slate">Buscar</button>
+              <input id="svcAddr" maxlength="160" placeholder="O escriban dirección, colonia o ciudad" />
+              <button type="submit" class="pill-slate">Usar</button>
             </form>
             <div class="list-col" id="svcCands"></div>
             <p class="svc-origin" id="svcOrigin" aria-live="polite"></p>
@@ -452,28 +507,28 @@
             <div class="seg" id="svcRadius" role="radiogroup" aria-label="Radio de búsqueda"></div>
           </section>
 
-          <section class="block">
-            <h2 class="h-sub">Accesibilidad</h2>
+          <details class="svc-more" id="svcAccBox" ${S.filters.size ? "open" : ""}>
+            <summary>Accesibilidad (opcional)</summary>
             <p class="small">Muestra solo lugares que tengan registrado que cuentan con:</p>
             <div class="chips-row" id="svcFilters"></div>
-            <p class="svc-fine">Google Maps no registra si un lugar tiene elevador, por eso ese dato no aparece.</p>
-          </section>
+          </details>
+
+          <section class="card svc-etapa" id="svcEtapa" aria-label="Sugerencias según la etapa de recuperación"></section>
         </div>
 
         <div class="svc-main">
           <div class="svc-status" id="svcStatus" aria-live="polite"></div>
-          <div class="svc-map" id="svcMap" role="region" aria-label="Mapa de resultados"></div>
-          <div class="list-col" id="svcList"></div>
-          <p class="note-dashed">Los datos de los lugares vienen de Google Maps y pueden cambiar. Llamen antes de ir para confirmar horarios y servicios. <b>En una emergencia llamen al 911.</b></p>
+          <ol class="svc-results" id="svcList"></ol>
+          <div id="svcMore"></div>
+          <p class="note-dashed">Los datos vienen de <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, un mapa que hace la comunidad, y pueden estar incompletos. Llamen antes de ir para confirmar horarios y servicios. <b>En una emergencia llamen al 911.</b></p>
         </div>
       </div>`;
     if (window.Cutout) Cutout.cutAll(root);
     bind();
-    drawTabs(); drawEtapa(); drawCats(); drawOrigin(); drawRadius(); drawFilters();
-    initMap();
-    drawResults(true);
+    drawTabs(); drawAsk(); drawEtapa(); drawOrigin(); drawRadius(); drawFilters();
+    drawResults();
     loadSaved();
-    if (S.cat && S.origin && S.status !== "done") search();
+    if (S.query && S.origin && S.status !== "done") search();
   }
 
   /* ---------- dibujar partes ---------- */
@@ -486,12 +541,20 @@
     root.classList.toggle("svc-saved-mode", S.tab !== "buscar");
   }
 
+  function drawAsk(msgHtml) {
+    $("#svcCats", root).innerHTML = CAT_ORDER.map((k) => `<button type="button" class="filter ${S.query && S.query.cat === k ? "on" : ""}" data-cat="${k}">${esc(CATS[k].label)}</button>`).join("");
+    const u = $("#svcUnderstood", root);
+    if (msgHtml != null) u.innerHTML = msgHtml;
+    else u.innerHTML = S.query ? `Buscaremos: <b>${esc(queryLabel(S.query))}</b>` : "";
+    $$(".svc-sug", root).forEach((b) => b.classList.toggle("on", !!(S.query && b.dataset.cat === S.query.cat)));
+  }
+
   function drawEtapa() {
     const box = $("#svcEtapa", root);
     const e = S.etapa && ETAPAS[S.etapa.key];
     if (!e || S.pickEtapa) {
       box.innerHTML = `
-        <div class="row-between"><span class="svc-k">Recomendaciones para su recuperación</span>${e ? `<button type="button" class="link-btn" data-etapa-cancel>Cancelar</button>` : ""}</div>
+        <div class="row-between"><span class="svc-k">Ideas para su recuperación</span>${e ? `<button type="button" class="link-btn" data-etapa-cancel>Cancelar</button>` : ""}</div>
         <p>¿En qué momento de la recuperación están?</p>
         <div class="chips-row">${Object.entries(ETAPAS).map(([k, x]) => `<button type="button" class="filter ${S.etapa && S.etapa.key === k ? "on" : ""}" data-etapa="${k}">${x.label}</button>`).join("")}</div>
         <p class="svc-fine">Solo usamos la etapa para sugerir qué buscar. No pedimos ni guardamos datos médicos.</p>`;
@@ -506,7 +569,7 @@
       <p class="svc-etapa-name"><span class="dot-pulse"></span>${esc(e.label)}</p>
       <p class="small">${esc(e.desc)}</p>
       <div class="svc-sugs">${sug.slice(0, 4).map(([c, why, team]) => `
-        <button type="button" class="svc-sug ${S.cat === c ? "on" : ""} ${team ? "team" : ""}" data-cat="${c}">
+        <button type="button" class="svc-sug ${S.query && S.query.cat === c ? "on" : ""} ${team ? "team" : ""}" data-cat="${c}">
           <span class="svc-glyph" aria-hidden="true">${CATS[c].glyph}</span>
           <span class="svc-sug-t"><b>${esc(CATS[c].label)}</b><small>${esc(why)}</small></span>
         </button>`).join("")}</div>
@@ -517,17 +580,9 @@
       }[S.etapa.fuente]}</p>`;
   }
 
-  function drawCats() {
-    $("#svcCats", root).innerHTML = CAT_ORDER.map((k) => `
-      <button type="button" class="svc-cat ${S.cat === k ? "on" : ""}" data-cat="${k}" role="radio" aria-checked="${S.cat === k}">
-        <span class="svc-glyph" aria-hidden="true">${CATS[k].glyph}</span><span>${esc(CATS[k].label)}</span>
-      </button>`).join("");
-    $$(".svc-sug", root).forEach((b) => b.classList.toggle("on", b.dataset.cat === S.cat));
-  }
-
   function drawOrigin() {
     $("#svcOrigin", root).innerHTML = S.origin
-      ? `<span class="svc-pin-ico" aria-hidden="true"></span><span>Buscando cerca de: <b>${esc(shortLabel(S.origin.label))}</b></span>`
+      ? `<span class="svc-pin-ico" aria-hidden="true"></span><span>Cerca de: <b>${esc(shortLabel(S.origin.label))}</b></span>`
       : "";
     $("#svcCands", root).innerHTML = S.candidates.length
       ? `<p class="small">¿Cuál de estos lugares es?</p>` + S.candidates.map((c, i) => `<button type="button" class="svc-cand" data-cand="${i}">${esc(c.label)}</button>`).join("")
@@ -542,21 +597,17 @@
     $("#svcFilters", root).innerHTML = ACCESOS.map((a) => `<button type="button" class="filter acc-filter ${S.filters.has(a.k) ? "on" : ""}" data-filter="${a.k}" aria-pressed="${S.filters.has(a.k)}">${S.filters.has(a.k) ? "✓ " : ""}${esc(a.label)}</button>`).join("");
   }
 
-  const passFilters = (p) => p.missing || [...S.filters].every((k) => (p.acc || []).some((a) => a.k === k && a.ok));
+  const passFilters = (p) => [...S.filters].every((k) => (p.acc || []).some((a) => a.k === k && a.ok));
 
   function currentBase() {
     if (S.tab === "guardados") {
-      return (S.savedDetails || []).map((p) => (p.missing ? p : { ...p, dist: S.origin ? km(S.origin, p) : null }))
+      return S.saved.map((p) => ({ ...p, dist: S.origin ? km(S.origin, p) : null }))
         .sort((a, b) => (a.dist == null || b.dist == null ? 0 : a.dist - b.dist));
     }
     return S.status === "done" ? S.results : [];
   }
 
-  function noKeyMsg() {
-    return `<p><b>Falta configurar Google Maps.</b> Agreguen la variable <code>GOOGLE_MAPS_API_KEY</code> en Vercel (o <code>js/config.js</code> en su computadora) y activen <i>Maps JavaScript API</i> y <i>Places API (New)</i>.</p>`;
-  }
-
-  function drawResults(fit) {
+  function drawResults() {
     const status = $("#svcStatus", root);
     const base = currentBase();
     const list = base.filter(passFilters);
@@ -564,172 +615,101 @@
     let msg = "";
 
     if (S.tab === "guardados") {
-      if (!S.saved.length) msg = `<p>Aún no guardan lugares. Toquen <b>☆ Guardar</b> en cualquier ficha para encontrarla rápido después.</p>`;
-      else if (S.savedStatus === "loading") msg = `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Cargando sus lugares guardados…</p>`;
-      else if (S.savedStatus === "error") msg = S.error === "NO_KEY" ? noKeyMsg() : `<p>No pudimos cargar sus lugares guardados. Revisen su conexión.</p><button type="button" class="btn-soft btn-sm" data-retry-saved>Intentar de nuevo</button>`;
-      else msg = `<p><b>${S.saved.length}</b> ${S.saved.length === 1 ? "lugar guardado" : "lugares guardados"}${S.filters.size ? ` · ${list.length} con los filtros de accesibilidad` : ""}.</p>`;
+      msg = S.saved.length
+        ? `<p><b>${S.saved.length}</b> ${S.saved.length === 1 ? "lugar guardado" : "lugares guardados"}${S.filters.size ? ` · ${list.length} con los filtros de accesibilidad` : ""}.</p>`
+        : `<p>Aún no guardan lugares. Toquen <b>☆ Guardar</b> en cualquier resultado para encontrarlo rápido después.</p>`;
     } else if (S.status === "loading") {
-      msg = `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Buscando ${esc(CATS[S.cat].short)} a menos de ${S.radius} km…</p>`;
+      msg = `<p class="svc-loading"><span class="dots-loading"><span></span><span></span><span></span></span> Buscando ${esc(queryLabel(S.query))} a menos de ${S.radius} km…</p>`;
     } else if (S.status === "error") {
-      msg = S.error === "NO_KEY" ? noKeyMsg()
-        : `<p>No pudimos consultar Google Maps en este momento. ${esc(S.error)}</p><button type="button" class="btn-soft btn-sm" data-retry>Intentar de nuevo</button>`;
+      msg = `<p>No pudimos consultar el mapa en este momento. ${esc(S.error)}</p><button type="button" class="btn-soft btn-sm" data-retry>Intentar de nuevo</button>`;
     } else if (S.status === "done") {
       const total = S.results.length;
       if (!total) {
-        msg = `<p>No encontramos ${esc(CATS[S.cat].short)} a menos de ${S.radius} km.</p>${S.radius < 20 ? `<button type="button" class="btn-soft btn-sm" data-radius-up>Buscar más lejos (${RADIOS[RADIOS.indexOf(S.radius) + 1]} km)</button>` : ""}`;
+        msg = `<p>No encontramos ${esc(queryLabel(S.query))} a menos de ${S.radius} km.</p>` +
+          (S.radius < 20 ? `<button type="button" class="btn-soft btn-sm" data-radius-up>Buscar más lejos (${RADIOS[RADIOS.indexOf(S.radius) + 1]} km)</button>` : "") +
+          (S.query.cat ? "" : `<p class="svc-fine">Prueben con otras palabras o elijan una de las ideas de búsqueda.</p>`);
       } else {
-        msg = `<p>Encontramos <b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(CATS[S.cat].short)} a menos de ${S.radius} km${S.filters.size ? `. Con los filtros de accesibilidad: <b>${list.length}</b>` : ""}. Ordenados del más cercano al más lejano.</p>` +
-          (S.lleno ? `<p class="svc-fine">Google entrega hasta 20 lugares por búsqueda: si quieren ver otros, elijan un radio más chico.</p>` : "");
+        msg = `<p><b>${total}</b> ${total === 1 ? "lugar" : "lugares"} de ${esc(queryLabel(S.query))} a menos de ${S.radius} km${S.filters.size ? `. Con los filtros de accesibilidad: <b>${list.length}</b>` : ""}. Del más cercano al más lejano.</p>`;
       }
     } else {
-      msg = !S.cat && !S.origin ? `<p>Elijan <b>qué necesitan</b> y <b>dónde buscar</b>, y aquí aparecerán los lugares más cercanos.</p>`
-        : !S.cat ? `<p>Ahora elijan qué tipo de servicio necesitan.</p>`
-        : `<p>Ahora dígannos dónde buscar: usen su ubicación o escriban su dirección.</p>`;
+      msg = !S.query && !S.origin ? `<p>Escriban <b>qué buscan</b> y <b>dónde están</b>, y aquí aparecerá la lista de lugares.</p>`
+        : !S.query ? `<p>Ahora escriban qué buscan.</p>`
+        : `<p>Ahora dígannos dónde están: usen su ubicación o escriban su dirección.</p>`;
     }
 
     // ¿cuántos lugares tienen registrado cada dato de accesibilidad?
-    const conDatos = base.filter((p) => !p.missing);
-    if (S.filters.size && conDatos.length) {
+    if (S.filters.size && base.length) {
       const notes = [...S.filters].map((k) => {
-        const n = conDatos.filter((p) => (p.acc || []).some((a) => a.k === k)).length;
+        const n = base.filter((p) => (p.acc || []).some((a) => a.k === k)).length;
         const a = ACCESOS.find((x) => x.k === k);
-        return `${a.label.toLowerCase()}: ${n ? `${n} de ${conDatos.length} lo tienen registrado` : "ninguno lo tiene registrado"}`;
+        return `${a.label.toLowerCase()}: ${n ? `${n} de ${base.length} lo tienen registrado` : "ninguno lo tiene registrado"}`;
       });
-      msg += `<p class="svc-fine">Dato registrado en Google Maps · ${notes.map(esc).join(" · ")}.</p>`;
+      msg += `<p class="svc-fine">Dato registrado · ${notes.map(esc).join(" · ")}.</p>`;
       if (!list.length) msg += `<button type="button" class="btn-soft btn-sm" data-clear-filters>Quitar filtros</button>`;
     }
     status.innerHTML = msg;
 
     const savedIds = new Set(S.saved.map((p) => p.id));
-    $("#svcList", root).innerHTML = visible.map((p, i) => (p.missing ? missingCard(p) : card(p, i + 1, savedIds.has(p.id)))).join("") +
-      (list.length > visible.length ? `<button type="button" class="btn btn-secondary" data-more>Ver más lugares (${list.length - visible.length})</button>` : "");
-
-    drawMarkers(visible.filter((p) => !p.missing), savedIds, fit);
+    $("#svcList", root).innerHTML = visible.map((p) => row(p, savedIds.has(p.id))).join("");
+    $("#svcMore", root).innerHTML = list.length > visible.length ? `<button type="button" class="btn btn-secondary" data-more>Ver más lugares (${list.length - visible.length})</button>` : "";
+    fillAddresses(visible);
   }
 
   function rutaUrl(p) {
-    const q = `&destination=${encodeURIComponent(p.name || `${p.lat},${p.lon}`)}&destination_place_id=${encodeURIComponent(p.id)}`;
     const o = S.origin ? `&origin=${S.origin.lat.toFixed(6)}%2C${S.origin.lon.toFixed(6)}` : "";
-    return `https://www.google.com/maps/dir/?api=1${o}${q}`;
+    return `https://www.google.com/maps/dir/?api=1${o}&destination=${p.lat.toFixed(6)}%2C${p.lon.toFixed(6)}`;
   }
 
-  function card(p, n, saved) {
-    const tel = (p.phone || "").replace(/[^\d+]/g, "");
+  function addrHtml(p) {
+    if (p.addr) return `${esc(p.addr)}${p.addrAprox ? ` <span class="svc-fine">(aprox.)</span>` : ""}`;
+    if (p.addrPending) return `<span class="muted">Buscando la dirección…</span>`;
+    return `<span class="muted">Dirección no registrada</span>`;
+  }
+
+  function row(p, saved) {
     return `
-      <article class="place ${saved ? "saved" : ""}" data-id="${esc(p.id)}">
+      <li class="place ${saved ? "saved" : ""}" data-id="${esc(p.id)}">
         <div class="place-top">
-          <button type="button" class="place-n" data-focus="${esc(p.id)}" aria-label="Ver en el mapa">${n}</button>
           <div class="place-main">
-            <h3>${esc(p.name || p.tipo)}</h3>
-            <span class="place-type">${esc(p.tipo)}</span>
+            <h3>${p.name ? esc(p.name) : `${esc(p.tipo)} <small>(sin nombre registrado)</small>`}</h3>
+            <p class="place-addr" data-addr-for="${esc(p.id)}">${addrHtml(p)}</p>
           </div>
           ${p.dist != null ? `<span class="place-dist" title="Distancia en línea recta">${fDist(p.dist)}</span>` : ""}
         </div>
-        ${p.closed ? `<p class="place-closed">Google lo marca como cerrado definitivamente.</p>` : ""}
-        <p class="place-addr">${p.addr ? esc(p.addr) : `<span class="muted">Dirección no disponible</span>`}</p>
-        ${p.phone ? `<p class="place-line"><span class="place-k">Teléfono</span> ${esc(p.phone)}</p>` : ""}
-        ${p.hours && p.hours.length ? `<details class="place-hours"><summary><span class="place-k">Horario</span> ${esc(hoyHorario(p.hours))}</summary><ul>${p.hours.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>` : ""}
-        ${p.acc && p.acc.length ? `<ul class="place-acc" aria-label="Accesibilidad registrada">${p.acc.map((a) => `<li class="${a.ok ? "ok" : "no"}">${a.ok ? "✓" : "✕"} ${esc(a.txt)}</li>`).join("")}</ul>` : ""}
+        <span class="place-type">${esc(p.tipo)}</span>
+        ${p.acc && p.acc.length ? `<ul class="place-acc" aria-label="Accesibilidad registrada">${p.acc.map((a) => `<li class="${a.ok ? "ok" : a.lim ? "lim" : "no"}">${a.ok ? "✓" : a.lim ? "◐" : "✕"} ${esc(a.txt)}</li>`).join("")}</ul>` : ""}
         <div class="place-actions">
-          <a class="pill-slate" href="${rutaUrl(p)}" target="_blank" rel="noopener">Cómo llegar</a>
-          ${tel ? `<a class="pill-light" href="tel:${esc(tel)}">Llamar</a>` : ""}
-          ${p.website ? `<a class="pill-light" href="${esc(p.website)}" target="_blank" rel="noopener">Página web</a>` : ""}
+          <a class="link-btn" href="${rutaUrl(p)}" target="_blank" rel="noopener">Cómo llegar</a>
           <button type="button" class="save-btn ${saved ? "on" : ""}" data-save="${esc(p.id)}" aria-pressed="${saved}">${saved ? "★ Guardado" : "☆ Guardar"}</button>
         </div>
-        ${p.gmaps ? `<a class="place-alt" href="${esc(p.gmaps)}" target="_blank" rel="noopener">Ver en Google Maps</a>` : ""}
-      </article>`;
-  }
-  function missingCard(p) {
-    return `
-      <article class="place" data-id="${esc(p.id)}">
-        <p>Este lugar ya no está disponible en Google Maps.</p>
-        <div class="place-actions"><button type="button" class="save-btn on" data-save="${esc(p.id)}">Quitar de mis lugares</button></div>
-      </article>`;
-  }
-  // "lunes: 8:00–20:00" → la línea de hoy
-  function hoyHorario(lines) {
-    const dia = norm(new Date().toLocaleDateString("es-MX", { weekday: "long" }));
-    const l = lines.find((x) => norm(x).startsWith(dia));
-    return l ? "Hoy " + l.replace(/^[^:]+:\s*/, "") : "Ver horario";
+      </li>`;
   }
 
-  /* ---------- mapa (Google Maps) ---------- */
-  function mostrarErrorClave() {
-    const el = root && $("#svcMap", root);
-    if (el) el.innerHTML = `<div class="svc-map-off">Google Maps rechazó la clave. Revisen que esté activa la facturación, que estén habilitadas <i>Maps JavaScript API</i> y <i>Places API (New)</i>, y que la clave permita este dominio.</div>`;
-  }
-
-  async function initMap() {
-    const el = $("#svcMap", root);
-    map = null; info = null; overlays = []; markers = {};
-    try {
-      const gm = await loadGoogle();
-      if (!root || !root.contains(el)) return; // ya se cambió de pantalla
-      if (authFailed) { mostrarErrorClave(); return; }
-      gmRef = gm;
-      const c = S.origin || CENTRO_INICIAL;
-      map = new gm.Map(el, {
-        center: { lat: c.lat, lng: c.lon },
-        zoom: S.origin ? 13 : CENTRO_INICIAL.zoom,
-        mapId: gm.mapId,
-        streetViewControl: false, mapTypeControl: false, fullscreenControl: false,
-        clickableIcons: false, gestureHandling: "cooperative",
-      });
-      info = new gm.InfoWindow();
-      drawResults(true);
-    } catch (ex) {
-      el.innerHTML = `<div class="svc-map-off">${ex.code === "NO_KEY" ? "El mapa aparecerá cuando se configure la clave de Google Maps." : "No se pudo cargar el mapa. Revisen su conexión."}</div>`;
+  // Completa, uno por uno, las direcciones que no están registradas
+  async function fillAddresses(list) {
+    const my = ++dirSeq;
+    const faltan = list.filter((p) => !p.addr && !p.addrTried);
+    faltan.forEach((p) => { p.addrPending = true; });
+    faltan.forEach((p) => { const el = root && $(`[data-addr-for="${CSS.escape(p.id)}"]`, root); if (el) el.innerHTML = addrHtml(p); });
+    for (const p of faltan) {
+      if (my !== dirSeq || !root) return;
+      try {
+        const txt = await reverse(p);
+        if (txt) { p.addr = txt; p.addrAprox = true; }
+      } catch (_) { /* sin dirección */ }
+      p.addrPending = false; p.addrTried = true;
+      const el = root && $(`[data-addr-for="${CSS.escape(p.id)}"]`, root);
+      if (el) el.innerHTML = addrHtml(p);
     }
-  }
-
-  function clearOverlays() {
-    overlays.forEach((o) => { if ("map" in o) o.map = null; if (o.setMap) o.setMap(null); });
-    overlays = []; markers = {};
-  }
-
-  function drawMarkers(list, savedIds, fit) {
-    if (!map || !gmRef) return;
-    const gm = gmRef;
-    clearOverlays();
-    let circle = null;
-    if (S.origin) {
-      const me = document.createElement("div");
-      me.className = "svc-me"; me.innerHTML = "<span></span>";
-      overlays.push(new gm.Marker({ map, position: { lat: S.origin.lat, lng: S.origin.lon }, content: me, title: "Punto de búsqueda", zIndex: 1000 }));
-      if (S.tab === "buscar") {
-        circle = new gm.Circle({ map, center: { lat: S.origin.lat, lng: S.origin.lon }, radius: S.radius * 1000, strokeColor: "#007380", strokeWeight: 2, fillColor: "#21BBBB", fillOpacity: 0.07, clickable: false });
-        overlays.push(circle);
-      }
-    }
-    list.forEach((p, i) => {
-      const pin = document.createElement("div");
-      pin.className = "svc-pin" + (savedIds.has(p.id) ? " saved" : "");
-      pin.innerHTML = `<span>${i + 1}</span>`;
-      const m = new gm.Marker({ map, position: { lat: p.lat, lng: p.lon }, content: pin, title: p.name || p.tipo });
-      m.addListener("click", () => {
-        info.setContent(`<div class="svc-info"><b>${esc(p.name || p.tipo)}</b><br>${esc(p.tipo)}${p.dist != null ? " · " + fDist(p.dist) : ""}<br><button type="button" class="link-btn" data-goto="${esc(p.id)}">Ver ficha</button></div>`);
-        info.open({ map, anchor: m });
-      });
-      overlays.push(m);
-      markers[p.id] = m;
-    });
-    if (!fit) return;
-    if (circle) map.fitBounds(circle.getBounds(), 10);
-    else if (list.length) {
-      const b = new google.maps.LatLngBounds();
-      list.forEach((p) => b.extend({ lat: p.lat, lng: p.lon }));
-      if (S.origin) b.extend({ lat: S.origin.lat, lng: S.origin.lon });
-      map.fitBounds(b, 40);
-      if (list.length === 1) map.setZoom(16);
-    } else if (S.origin) { map.setCenter({ lat: S.origin.lat, lng: S.origin.lon }); map.setZoom(13); }
   }
 
   /* ---------- acciones ---------- */
-  function setCat(c) {
-    if (!CATS[c]) return;
-    if (S.cat !== c) { S.cat = c; S.results = []; S.status = "idle"; S.shown = PAGE; }
+  function setQuery(q, msgHtml) {
+    const same = S.query && q && S.query.cat === q.cat && S.query.text === q.text;
+    S.query = q;
+    if (!same) { S.results = []; S.status = "idle"; S.shown = PAGE; }
     S.tab = "buscar";
-    drawTabs(); drawCats();
+    drawTabs(); drawAsk(msgHtml);
     if (S.origin) search();
     else {
       drawResults();
@@ -738,36 +718,64 @@
     }
   }
 
+  function askText(text) {
+    text = text.trim();
+    if (!text) return;
+    const hit = detect(text, { any: true });
+    if (hit) {
+      setQuery({ cat: hit.cat }, `Lupita entendió: <b>${esc(hit.short)}</b>` +
+        (hit.urgente ? `<br><b>Si es una emergencia, llamen al 911.</b>` : ""));
+    } else if (textoARegex(text).length >= 3) {
+      setQuery({ text: text.slice(0, 40) }, `Buscaremos lugares con el nombre <b>«${esc(text.slice(0, 40))}»</b>.`);
+    } else {
+      drawAsk("Escriban un poco más, por ejemplo: <i>«farmacia»</i> o <i>«fisioterapia»</i>.");
+    }
+  }
+
   function setOrigin(o) {
     S.origin = o; S.candidates = []; S.results = []; S.status = "idle";
-    $$(".svc-ask-loc", root).forEach((x) => x.remove());
     drawOrigin();
-    if (S.cat) search();
-    else drawResults(true);
+    if (S.query) search();
+    else drawResults();
   }
 
   async function search() {
-    if (!S.cat || !S.origin) { drawResults(); return; }
+    if (!S.query || !S.origin) { drawResults(); return; }
     const my = ++seq;
-    const key = [S.cat, S.origin.lat.toFixed(4), S.origin.lon.toFixed(4), S.radius].join("|");
+    dirSeq++; // detiene el relleno de direcciones anterior
+    const qKey = S.query.cat ? "c:" + S.query.cat : "t:" + norm(S.query.text);
+    const key = [qKey, S.origin.lat.toFixed(4), S.origin.lon.toFixed(4), S.radius].join("|");
     S.status = "loading"; S.shown = PAGE; S.tab = "buscar";
     drawTabs(); drawResults();
-    try {
-      let r = cache.get(key);
-      if (!r) { r = await placesSearch(S.cat, S.origin, S.radius); cache.set(key, r); }
+    const aviso = (txt) => {
       if (my !== seq) return;
-      S.results = r.list.map((pl) => toPlace(pl, S.cat, S.origin))
-        .filter((p) => p && p.dist <= S.radius + 0.05)
-        .sort((a, b) => a.dist - b.dist);
-      S.lleno = r.lleno;
+      const st = $(".svc-loading", root);
+      if (st) st.lastChild.textContent = " " + txt;
+    };
+    try {
+      let list = cache.get(key);
+      if (!list) {
+        try {
+          const els = await overpass(buildQuery(S.query, S.origin, S.radius), aviso);
+          list = els.map((e) => toPlace(e, S.query.cat, S.origin));
+        } catch (_) {
+          if (my !== seq) return;
+          aviso("Overpass está saturado; buscando con Nominatim…");
+          list = await nominatimSearch(S.query, S.origin, S.radius);
+        }
+        cache.set(key, list);
+      }
+      if (my !== seq) return;
+      S.results = dedupe(list.filter((p) => p && p.dist <= S.radius + 0.05).map((p) => ({ ...p })));
       S.status = "done";
     } catch (ex) {
       if (my !== seq) return;
       S.status = "error";
-      S.error = ex && ex.code === "NO_KEY" ? "NO_KEY" : !navigator.onLine ? "Revisen su conexión a internet." : "Intenten de nuevo en un momento.";
-      if (ex && ex.code !== "NO_KEY") console.warn("Places API:", ex);
+      S.error = !navigator.onLine ? "Revisen su conexión a internet."
+        : "Los servidores de OpenStreetMap están muy ocupados. Intenten de nuevo en un minuto.";
     }
-    drawResults(true);
+    drawResults();
+    if (S.status === "done" && window.innerWidth < 900) $("#svcStatus", root).scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function useLocation() {
@@ -802,40 +810,16 @@
       S.candidates = rows;
       out.textContent = "";
       drawOrigin();
-    } catch (ex) {
-      out.innerHTML = ex && ex.code === "NO_KEY" ? noKeyMsg() : "No pudimos buscar la dirección ahora. Revisa tu conexión e intenta de nuevo.";
+    } catch (_) {
+      out.textContent = "No pudimos buscar la dirección ahora. Revisa tu conexión e intenta de nuevo.";
     }
-  }
-
-  function lupita(text) {
-    const msg = $("#svcLupitaMsg", root);
-    const hit = detect(text, { any: true });
-    if (!hit) {
-      msg.innerHTML = "Mmm, no estoy segura de qué buscan. Elijan una opción de abajo o díganmelo con otras palabras, por ejemplo: <i>«una farmacia cerca»</i>.";
-      return;
-    }
-    msg.innerHTML = (window.Lupi ? Lupi.fmt(reply(hit)) : esc(reply(hit))) + (S.origin ? "" : `<p class="svc-ask-loc">Ahora díganme <b>dónde buscar</b>.</p>`);
-    setCat(hit.cat);
   }
 
   async function loadSaved() {
-    try { S.saved = (await savedApi.list()).filter((p) => isGoogleId(p.id)); } catch (_) { S.saved = []; }
+    try { S.saved = (await savedApi.list()).filter((p) => p && p.name != null && p.lat != null); } catch (_) { S.saved = []; }
     if (!root) return;
     drawTabs();
-    if (S.tab === "guardados") loadSavedDetails();
-    else drawResults(false);
-  }
-
-  async function loadSavedDetails() {
-    if (!S.saved.length) { S.savedDetails = []; drawResults(true); return; }
-    S.savedStatus = "loading"; drawResults(false);
-    try {
-      S.savedDetails = await fetchSaved(S.saved);
-      S.savedStatus = "done";
-    } catch (ex) {
-      S.savedStatus = "error"; S.error = ex && ex.code === "NO_KEY" ? "NO_KEY" : "";
-    }
-    if (S.tab === "guardados") drawResults(true);
+    drawResults();
   }
 
   async function toggleSave(id, btn) {
@@ -845,16 +829,13 @@
       if (isSaved) {
         await savedApi.remove(id);
         S.saved = S.saved.filter((p) => p.id !== id);
-        if (S.savedDetails) S.savedDetails = S.savedDetails.filter((p) => p.id !== id);
         toast("Quitado de tus lugares guardados");
       } else {
         const p = S.results.find((x) => x.id === id);
         if (!p) return;
-        const rec = { id: p.id, cat: p.cat, savedAt: new Date().toISOString() }; // solo el ID (reglas de Google)
+        const rec = slim(p);
         await savedApi.add(rec);
         S.saved = [rec, ...S.saved.filter((x) => x.id !== id)];
-        detailCache.set(p.id, p);
-        if (S.savedDetails) S.savedDetails = [p, ...S.savedDetails.filter((x) => x.id !== id)];
         toast("Guardado en «Mis lugares»");
       }
     } catch (ex) {
@@ -863,44 +844,28 @@
       btn.disabled = false;
     }
     drawTabs();
-    drawResults(false);
-  }
-
-  function focusPlace(id) {
-    const m = markers[id];
-    if (m && map) {
-      $("#svcMap", root).scrollIntoView({ behavior: "smooth", block: "center" });
-      map.panTo(m.position);
-      if (map.getZoom() < 16) map.setZoom(16);
-      google.maps.event.trigger(m, "click");
-    }
-  }
-  function gotoCard(id) {
-    const el = $(`[data-id="${CSS.escape(id)}"]`, root);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+    drawResults();
   }
 
   function bind() {
     root.addEventListener("click", (e) => {
       const t = e.target;
       let b;
-      if ((b = t.closest("[data-tab]"))) {
-        S.tab = b.dataset.tab; drawTabs();
-        if (S.tab === "guardados") loadSavedDetails(); else drawResults(true);
-        return;
-      }
+      if ((b = t.closest("[data-tab]"))) { S.tab = b.dataset.tab; drawTabs(); drawResults(); if (S.tab === "guardados") loadSaved(); return; }
       if ((b = t.closest("[data-etapa]"))) {
         lsSet(ETAPA_KEY, { who: S.patient ? S.patient.codigo : "", etapa: b.dataset.etapa });
         S.etapa = { key: b.dataset.etapa, fuente: "manual" }; S.pickEtapa = false; drawEtapa(); return;
       }
       if (t.closest("[data-etapa-cambiar]")) { S.pickEtapa = true; drawEtapa(); return; }
       if (t.closest("[data-etapa-cancel]")) { S.pickEtapa = false; drawEtapa(); return; }
-      if ((b = t.closest("[data-cat]"))) { setCat(b.dataset.cat); return; }
+      if ((b = t.closest("[data-cat]"))) {
+        $("#svcQ", root).value = CATS[b.dataset.cat].label;
+        setQuery({ cat: b.dataset.cat });
+        return;
+      }
       if ((b = t.closest("[data-radius]"))) {
         S.radius = +b.dataset.radius; savePrefs(); drawRadius();
-        if (S.cat && S.origin) search(); else drawResults(true);
+        if (S.query && S.origin) search(); else drawResults();
         return;
       }
       if (t.closest("[data-radius-up]")) {
@@ -909,21 +874,18 @@
       if ((b = t.closest("[data-filter]"))) {
         const k = b.dataset.filter;
         S.filters.has(k) ? S.filters.delete(k) : S.filters.add(k);
-        S.shown = PAGE; savePrefs(); drawFilters(); drawResults(false); return;
+        S.shown = PAGE; savePrefs(); drawFilters(); drawResults(); return;
       }
-      if (t.closest("[data-clear-filters]")) { S.filters.clear(); savePrefs(); drawFilters(); drawResults(false); return; }
+      if (t.closest("[data-clear-filters]")) { S.filters.clear(); savePrefs(); drawFilters(); drawResults(); return; }
       if ((b = t.closest("[data-cand]"))) { setOrigin(S.candidates[+b.dataset.cand]); return; }
       if (t.closest("#svcGeo")) { useLocation(); return; }
       if (t.closest("[data-retry]")) { cache.clear(); search(); return; }
-      if (t.closest("[data-retry-saved]")) { loadSavedDetails(); return; }
-      if (t.closest("[data-more]")) { S.shown += PAGE; drawResults(false); return; }
+      if (t.closest("[data-more]")) { S.shown += PAGE; drawResults(); return; }
       if ((b = t.closest("[data-save]"))) { toggleSave(b.dataset.save, b); return; }
-      if ((b = t.closest("[data-focus]"))) { focusPlace(b.dataset.focus); return; }
-      if ((b = t.closest("[data-goto]"))) { if (info) info.close(); gotoCard(b.dataset.goto); return; }
     });
+    $("#svcAskForm", root).addEventListener("submit", (e) => { e.preventDefault(); askText($("#svcQ", root).value); });
     $("#svcAddrForm", root).addEventListener("submit", (e) => { e.preventDefault(); searchAddress($("#svcAddr", root).value); });
-    $("#svcLupita", root).addEventListener("submit", (e) => { e.preventDefault(); const v = $("#svcLupitaIn", root).value; if (v.trim()) lupita(v); });
   }
 
-  window.Servicios = { mount, detect, reply, etapaDe, ETAPAS, CATS, CAT_ORDER };
+  window.Servicios = { mount, detect, reply, etapaDe, ETAPAS, CATS, CAT_ORDER, buildQuery };
 })();

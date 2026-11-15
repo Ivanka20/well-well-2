@@ -276,20 +276,18 @@ alter table public.pacientes add column if not exists etapa_recuperacion text
 alter table public.pacientes add column if not exists apoyos_sugeridos text[] not null default '{}'
   check (apoyos_sugeridos <@ array['hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada']::text[]);
 
--- Mis lugares guardados (lugares de Google Maps · Places API)
--- Por las reglas de Google solo se guarda el place_id (se puede guardar
--- sin límite de tiempo); nombre, dirección, etc. se piden de nuevo a Places API.
+-- Mis lugares guardados (lugares de OpenStreetMap)
 create table if not exists public.lugares_guardados (
   id uuid primary key default gen_random_uuid(),
   paciente_id uuid not null references public.pacientes (id) on delete cascade,
-  place_id text not null check (char_length(place_id) <= 400),
+  place_id text not null check (char_length(place_id) <= 400),   -- p. ej. "node/123456"
   categoria text check (categoria in ('hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada')),
+  datos jsonb,                                                    -- nombre, dirección, accesibilidad…
   created_at timestamptz not null default now(),
   unique (paciente_id, place_id)
 );
 
--- Si ya habías creado la versión anterior (OpenStreetMap), se convierte aquí.
--- Las filas viejas (IDs tipo "node/123") no se borran; la app simplemente las ignora.
+-- Si ya habías creado una versión anterior de esta tabla, se ajusta aquí (sin borrar filas).
 do $$
 begin
   if exists (select 1 from information_schema.columns
@@ -299,11 +297,12 @@ begin
     alter table public.lugares_guardados rename column osm_id to place_id;
     alter table public.lugares_guardados add constraint lugares_guardados_place_id_check check (char_length(place_id) <= 400);
     alter table public.lugares_guardados add constraint lugares_guardados_paciente_id_place_id_key unique (paciente_id, place_id);
-    alter table public.lugares_guardados drop column if exists datos;
-    alter table public.lugares_guardados add column if not exists categoria text
-      check (categoria in ('hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada'));
   end if;
 end $$;
+alter table public.lugares_guardados add column if not exists datos jsonb;
+alter table public.lugares_guardados add column if not exists categoria text
+  check (categoria in ('hospitales', 'rehabilitacion', 'fisioterapia', 'farmacias', 'laboratorios', 'especializada'));
+alter table public.lugares_guardados alter column datos drop not null;
 create index if not exists idx_lugares_pac on public.lugares_guardados (paciente_id, created_at);
 alter table public.lugares_guardados enable row level security;
 

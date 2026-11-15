@@ -1,16 +1,20 @@
 # well well
 
-Tu proceso médico, a la vista. Sitio web para pacientes, familias, personal médico y hospitales.
+Tu proceso médico, a la vista. Sitio web con dos espacios:
+
+- **Pacientes y familiares** (niñas y niños, adultos y personas mayores): ruta, medicinas, citas, expediente, avisos, chat, Lupita y **Cerca de mí**.
+- **Personal del hospital**: recepción, avisos y expedientes.
 
 ## Estructura
 
 ```
-index.html          página única (inicio, asistente, ingresar, app)
+index.html          página única (inicio, Lupita, Cerca de mí, ingresar, app)
 styles.css          diseño (paleta de 5 colores + letras recortadas)
 js/cutout.js        letras estilo recorte de revista (atributo data-cut)
-js/lupi-art.js      dibujo de Lupi, el personaje del asistente
-js/lupi.js          chatbot (usa /api/chat; sin conexión usa un mini diccionario)
-js/store.js         Supabase + modo demo
+js/lupi-art.js      dibujo de Lupita, el personaje del asistente
+js/lupi.js          Lupita (usa /api/chat; sin conexión usa un mini diccionario)
+js/servicios.js     Cerca de mí: servicios después del alta (OpenStreetMap + Overpass API, sin mapa)
+js/store.js         Supabase + modo demo (incluye "Mis lugares guardados")
 js/calendar.js      archivos .ics y Google Calendar con recordatorios
 js/demo-data.js     pacientes y personal de prueba
 js/app.js           rutas, carrusel, desplegables, secciones
@@ -18,6 +22,24 @@ api/chat.js         función de Vercel que llama a Claude
 supabase/schema.sql tablas y reglas de seguridad (RLS)
 supabase/seed.sql   datos de ejemplo (opcional)
 ```
+
+## Cerca de mí (servicios después del alta)
+
+Ruta: `#/servicios` (abierta para todos, sin iniciar sesión) o `#/servicios/<categoría>`.
+
+| Función | Cómo funciona |
+|---|---|
+| **¿Qué buscan?** | Un solo cuadro de texto: «fisioterapia para mi hijo», «farmacia», «laboratorio»… Lupita reconoce la categoría (hospitales y centros médicos, clínicas de rehabilitación, fisioterapia, farmacias, laboratorios médicos, atención especializada) y la traduce a etiquetas de OpenStreetMap. Si no reconoce una categoría, busca lugares cuyo nombre contenga ese texto (sin importar acentos). Debajo hay botones con las 6 categorías como ideas. |
+| **¿Dónde están?** | Ubicación actual del dispositivo (`navigator.geolocation`) o dirección/ciudad escrita (Nominatim de OpenStreetMap). La ubicación no se guarda. |
+| **Radio** | 1, 5, 10 o 20 km. Overpass API devuelve los establecimientos reales dentro del radio; la app calcula la distancia en línea recta y los ordena del más cercano al más lejano. |
+| **Resultados** | Lista sin mapa: **nombre y dirección**, más tipo de lugar, distancia, enlace **Cómo llegar** (abre Google Maps con un enlace normal, sin clave) y botón **Guardar**. Si OpenStreetMap no tiene la dirección registrada, se busca una dirección aproximada con Nominatim (una por segundo) y se marca «(aprox.)». |
+| **Accesibilidad** | Filtros opcionales: entrada para silla de ruedas (`wheelchair`), estacionamiento accesible (`capacity:disabled`), elevador (`elevator`) y baños adaptados (`toilets:wheelchair`). Solo se muestran cuando el dato está registrado; nunca se suponen. |
+| **Mis lugares guardados** | Paciente con cuenta en Supabase → tabla `lugares_guardados`. Sin sesión o en modo demo → en el navegador. |
+| **Etapa de recuperación** | Sugiere qué buscar según la etapa (preparando la salida, primeras semanas en casa, en rehabilitación, revisiones de control). Se calcula con el paso «Alta» de la ruta o con la columna `etapa_recuperacion`; el hospital puede sugerir categorías con `apoyos_sugeridos`. **No usa el diagnóstico.** Sin sesión, la familia elige la etapa. |
+| **Lupita** | Si alguien le escribe a Lupita «necesito un lugar donde mi hijo pueda recibir fisioterapia», reconoce la categoría y ofrece un botón que abre Cerca de mí con esa búsqueda. |
+
+**No hay que configurar nada:** OpenStreetMap, Overpass API y Nominatim son gratuitos y no piden clave. Si un servidor de Overpass está saturado, la app prueba con dos servidores de respaldo y avisa a la familia. Los datos de OpenStreetMap los hace la comunidad y pueden estar incompletos; la app lo dice y recomienda llamar antes de ir. Para mucho tráfico conviene un servidor propio de Overpass/Nominatim.
+> La ubicación actual del navegador solo funciona en `https://` (Vercel) o en `localhost`.
 
 ## Publicar (GitHub → Vercel)
 
@@ -27,12 +49,18 @@ supabase/seed.sql   datos de ejemplo (opcional)
 
 ## Base de datos (Supabase)
 
-1. Supabase → **SQL Editor** → pega y ejecuta `supabase/schema.sql`.
+1. Supabase → **SQL Editor** → pega y ejecuta `supabase/schema.sql` (es seguro volver a ejecutarlo: agrega las columnas `etapa_recuperacion` y `apoyos_sugeridos` y la tabla `lugares_guardados`; si ya tenías una versión anterior de esa tabla, la ajusta sin borrar nada).
 2. Por cada paciente o persona del personal, crea un usuario en **Authentication → Users → Add user** (marca *Auto Confirm*):
    - Paciente `WW-2048-17` → correo `ww-2048-17@paciente.wellwell.app`
    - Personal `REC-0042` → correo `rec-0042@personal.wellwell.app`
    - La contraseña es su **código de acceso** (mínimo 6 caracteres).
-3. Llena sus datos en las tablas (o ejecuta `supabase/seed.sql` como ejemplo).
+3. Llena sus datos en las tablas (o ejecuta `supabase/seed.sql` como ejemplo). Para Cerca de mí, opcionalmente:
+   ```sql
+   update public.pacientes
+   set etapa_recuperacion = 'rehabilitacion',
+       apoyos_sugeridos = array['rehabilitacion', 'fisioterapia']
+   where codigo = 'WW-2048-17';
+   ```
 4. Documentos del expediente: sube los PDF a **Storage** y pega su enlace en la columna `url` de la tabla `documentos`. Así los botones "Ver" y "Descargar" abren el archivo real.
 5. En **Authentication → Providers → Email**, puedes desactivar "Allow new users to sign up": las cuentas las crea el hospital.
 
@@ -40,8 +68,10 @@ supabase/seed.sql   datos de ejemplo (opcional)
 
 | Rol | ID | Código |
 |---|---|---|
-| Paciente internada | WW-2048-17 | 123456 |
-| Paciente con citas | WW-3301-09 | 123456 |
-| Personal de apoyo (recepción) | REC-0042 / REC-0107 | apoyo26 |
+| Paciente internada (niña) | WW-2048-17 | 123456 |
+| Paciente con citas (adulto) | WW-3301-09 | 123456 |
+| Niño en casa tras una quemadura (etapa: rehabilitación) | WW-5120-03 | 123456 |
+| Adulta mayor en casa tras cirugía de cadera (etapa calculada: primeras semanas) | WW-7702-44 | 123456 |
+| Personal del hospital (recepción) | REC-0042 / REC-0107 | apoyo26 |
 
 En modo demo los mensajes se guardan solo en ese navegador (abre dos pestañas para ver paciente y personal conversando). Si el ID existe en Supabase, se usa Supabase.
