@@ -18,7 +18,9 @@ js/store.js         Supabase + modo demo (incluye "Mis lugares guardados")
 js/calendar.js      archivos .ics y Google Calendar con recordatorios
 js/demo-data.js     pacientes y personal de prueba
 js/app.js           rutas, carrusel, desplegables, secciones
-api/chat.js         función de Vercel que llama a Claude
+api/chat.js         función de Vercel que llama a Claude (lee las instrucciones de prompts/)
+prompts/lupita-system-prompt.md  instrucciones de Lupita para el modelo de IA (system prompt)
+vercel.json         incluye la carpeta prompts/ en la función api/chat.js
 supabase/schema.sql tablas y reglas de seguridad (RLS)
 supabase/seed.sql   datos de ejemplo (opcional)
 ```
