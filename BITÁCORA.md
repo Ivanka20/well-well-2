@@ -94,3 +94,9 @@ $$;
 
 
 **Documentación del chatbot "Lupita"**
+
+Las instrucciones del modelo de IA de Lupita están guardadas en el repositorio en prompts/lupita-system-prompt.md. La función api/chat.js las lee de ese archivo en cada llamada, así que el archivo es la versión que usa el modelo.
+
+**Uso de IA**
+
+Para todo mi proyecto usé Claude. Para crear el código me apoyé en Claude Code: le di todas las instrucciones lo más específicas posible y lo fui guiando para que codificara como tenía en mente mi app. Para el diseño utilicé Claude Design: diseñé las animaciones del chatbot y la presentación visual de la app. Para la creación de la idea y propósito de la app no utilicé para nada IA.
