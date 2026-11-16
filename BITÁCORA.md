@@ -130,7 +130,8 @@ Asimismo, el sistema omitió procesar los parámetros clave del input, como la u
 Entre los commits realizados destacan:
 
 **1. Add SQL function to get patient ID:** 
-   - - **Archivo modificado:** js/store.js.
+
+   - **Archivo modificado:** js/store.js.
    
   - **Cambio realizado:** Documenté la función SQL mi_paciente_id() utilizada para recuperar el identificador del paciente asociado al perfil autenticado en Supabase.
     
