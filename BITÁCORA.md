@@ -10,6 +10,8 @@
    5. Datos obtenidos automáticamente mediante la API: nombre del establecimiento, coordenadas geográficas, dirección, categoría, teléfono, sitio web y características de accesibilidad, cuando estén registrados.
 - **Cómo se sabrá que funciona:** Se comprobará que funciona mediante pruebas de búsqueda con diferentes ubicaciones, categorías y radios de distancia. Se considerará exitosa cuando la aplicación pueda conectarse correctamente a Overpass API, obtener establecimientos reales de OpenStreetMap y mostrar los resultados correspondientes a los filtros seleccionados. También se verificará que las distancias calculadas sean correctas, que los establecimientos aparezcan en el mapa en sus ubicaciones correspondientes y que la información disponible (nombre, dirección y datos de contacto) coincida con los registros obtenidos de la API.
 
+- **Auditoría con compañero:**
+
 **Paso 2. Registro de prueba**
 
 **Prompt:**
@@ -64,7 +66,7 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
 
 **Lo que la IA propuso que no coincidía con tu especificación:** La IA me dio una propuesta que no completaba mis instrucciones, solo las cumplía a medias, así que mandé este prompt: "Cuando el usuario ingresa su búsqueda, aparece un mensaje de que ya encontró x cantidad de lugares, pero no especifica los nombres de los lugares. Arregla eso. También vuelve a mostrar el mapa señalando los lugares encontrados y señalando una ruta para llegar al lugar de destino a partir del lugar que puso el usuario como referencia".
 
-**Mi decisión:** REVISIÓN. Aunque había incorporado gran parte de las funciones que describí, identifiqué que algunos elementos importantes de mi especificación no se estaban cumpliendo completamente. En particular, la herramienta mostraba un mensaje indicando cuántos establecimientos había encontrado, pero no presentaba los nombres ni la información específica de cada uno. Además, el mapa ya no mostraba visualmente los lugares encontrados ni la ruta para llegar al establecimiento seleccionado desde la ubicación de referencia del usuario.
+**Mi decisión:** REVISIÓN. La propuesta inicial de la IA no cumplía completamente con mis criterios de funcionamiento. Aunque mostraba la cantidad de establecimientos encontrados, no presentaba sus nombres ni la información específica de cada uno. Además, había eliminado la representación visual de los establecimientos en el mapa y la ruta hacia el destino seleccionado. Esto contradecía mi especificación, en la que establecí que los resultados debían mostrarse en un mapa interactivo y en una lista organizada con información de los establecimientos y opciones para llegar a ellos. Por eso, decidí solicitar una revisión en lugar de aceptar la primera propuesta.
 
 **Paso 3. Validar que funciona de verdad**
 **Qué especifiqué que debía hacer:** Cuando un paciente escribe su ID y su código de acceso, la app los valida contra Supabase. Si son correctos y el ID tiene datos asignados, entra a su espacio y ve sus datos. Si el código es incorrecto, muestra "ID o código de acceso incorrectos".
@@ -96,6 +98,19 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
    **Output real:** No da ningún mensaje, solo dirige a su sesión e información dentro de la app.
 
 **Mi decisión:** ACEPTAR. La IA me dió exactamente el código para copiar en SQL Editor el Supabase para crear el usuario de prueba con su contraseña y luego al no contar con información sobre ese usuario, Claude Code me dio el código necesario para copiarlo en SQL Editor y establecer la información de nuestro usuario de prueba: <img width="800" height="402" alt="image" src="https://github.com/user-attachments/assets/ca035344-fd8c-4f71-93fa-bef008eae98c" />
+
+**CASO PRUEBA C**
+
+   **Input exacto:** 
+      - **Categoría:** Centros de fisioterapia.
+      - **Ubicación de referencia:** Estadio Banorte
+      - **Radio de búsqueda:** 5 km
+      - **Filtro de accesibilidad:** Entrada accesible para silla de ruedas.
+   
+   **Output real:** No sugirió ningún lugar, solo dejo que el usuario ingresara su información de búsqueda, pero en el mapa no marcó ningún lugar.
+
+**Mi decisión:** RECHAZAR. La IA no sugirió ningún centro de fisioterapia dentro del radio de 5 km ni marcó ningún lugar en el mapa.
+Asimismo, el sistema omitió procesar los parámetros clave del input, como la ubicación de referencia en el Estadio Banorte y el filtro de accesibilidad para silla de ruedas.En consecuencia, rechazar el resultado es un juicio correcto, ya que el modelo no entregó la información útil ni cumplió con los requerimientos de la búsqueda.
 
 
 **Documentación del chatbot "Lupita"**
