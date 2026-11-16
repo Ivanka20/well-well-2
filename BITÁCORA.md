@@ -42,7 +42,7 @@ Well Well podría centralizar esa búsqueda en un solo lugar.
 
 La función sería  útil para pacientes pediátricos, personas con movilidad limitada y familiares que están organizando los cuidados posteriores al alta, incluso para pacientes de la tercera edad (un gran paréntesis es que la app ya no solo estará dividida para personal del hospital y para pacientes pediátricos y familiares; ahora estará dividida para personal del hospital y pacientes y familiares, así que por favor haz esa modificación).
 
-La nueva herramientas ayudará en estos aspectos:
+La nueva herramienta ayudará en estos aspectos:
 
 A. Categorías de servicios
 El usuario puede seleccionar qué tipo de apoyo necesita: hospitales y centros médicos, clínicas de rehabilitación, fisioterapia, farmacias, laboratorios médicos, centros de atención especializada.
@@ -63,7 +63,7 @@ D. Mis lugares guardados
 Los familiares pueden guardar establecimientos favoritos para encontrarlos rápidamente después.
 
 E. Integración con Lupi (y otra cosa que necesito que cambies es el nombre del chatbot, en lugar de Lupi quiero que sea Lupita)
-El chatbot podría ayudar a orientar las búsquedas. Ejemplo: "Necesito encontrar un lugar donde mi hijo pueda recibir fisioterapia".
+El chatbot podría ayudar a orientar las búsquedas; por ejemplo: "Necesito encontrar un lugar donde mi hijo pueda recibir fisioterapia".
 Lupi identifica la categoría y permite iniciar una búsqueda de centros de fisioterapia cercanos.
 Para que funcione, necesito que uses datos de OpenStreetMap, Overpass API y Leaflet.
 
