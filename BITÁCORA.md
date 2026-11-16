@@ -14,15 +14,15 @@
   
      -**Auditor:** Alexhia
   
-     - **Observaciones:** La propuesta para la  nueva función complementa el propósito de la app. Será una herramienta que tal vez no se use al momento para a largo plazo vale totalmente la pena. Las acciones que se pueden agregar para mejorarla es que una vez seleccionado el lugar al que desean ir se pregunte por qué medio de transporte desea llegar al destino y proponer la mejor ruta.
+     - **Observaciones:** La propuesta para la  nueva función complementa el propósito de la app. Será una herramienta que tal vez no se use al momento, pero a largo plazo vale totalmente la pena. Las acciones que se pueden agregar para mejorarla son que, una vez seleccionado el lugar al que desean ir, se pregunte por qué medio de transporte desean llegar al destino y se proponga la mejor ruta.
        
      - **Revisión de los tres campos de especificación:**
        
-       1. **Qué hace:** La propuesta fue considerada clara y coherente con el propósito de Well Well.
-       2. **Qué datos/inputs necesita:** Se identificó la posibilidad de agregar el medio de transporte como un input adicional para calcular las rutas.
-       3. **Cómo se sabrá que funciona:** Se consideró importante que el usuario pueda visualizar una ruta hacia el establecimiento seleccionado, de acuerdo con el medio de transporte elegido.
+       1. **Qué hace:** A partir de las observaciones generales, confirmé que la funcionalidad complementa el propósito de Well Well al facilitar la búsqueda de servicios necesarios después del alta hospitalaria.
+       2. **Qué datos/inputs necesita:** Su propuesta me hizo identificar que podía incorporar el medio de transporte como un dato adicional para ofrecer opciones de ruta.
+       3. **Cómo se sabrá que funciona:** Consideré que no bastaba con mostrar establecimientos cercanos; también era importante comprobar que el usuario pudiera consultar cómo llegar al lugar seleccionado.
 
-Después de la auditoría, implemente los consejos de mi auditor y los agregué a la idea que ya estaba desarrollando. 
+Después de la auditoría, implementé los consejos de mi auditor y los agregué a la idea que ya estaba desarrollando. 
 
 **Paso 2. Registro de prueba**
 
@@ -123,6 +123,8 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
 
 **Mi decisión:** RECHAZAR. La IA no sugirió ningún centro de fisioterapia dentro del radio de 5 km ni marcó ningún lugar en el mapa.
 Asimismo, el sistema omitió procesar los parámetros clave del input, como la ubicación de referencia en el Estadio Banorte y el filtro de accesibilidad para silla de ruedas.En consecuencia, rechazar el resultado es un juicio correcto, ya que el modelo no entregó la información útil ni cumplió con los requerimientos de la búsqueda.
+
+La prueba C no cumplió con los criterios de funcionamiento de la especificación. Al ingresar una categoría, ubicación, radio de búsqueda y filtro de accesibilidad, la app no mostró ningún establecimiento ni marcador en el mapa.
 
 
 **Historial de commits**
