@@ -127,6 +127,31 @@ Asimismo, el sistema omitió procesar los parámetros clave del input, como la u
 
 **Historial de commits**
 
+Entre los commits realizados destacan:
+
+**1. Add SQL function to get patient ID:** 
+   - - **Archivo modificado:** js/store.js.
+   
+  - **Cambio realizado:** Documenté la función SQL mi_paciente_id() utilizada para recuperar el identificador del paciente asociado al perfil autenticado en Supabase.
+    
+  - **Decisión de desarrollo:** Actualizar la configuración de conexión para que la aplicación utilizara el proyecto de Supabase correspondiente a esta versión.
+
+Este cambio permitió trabajar con la identificación y recuperación de la información del paciente durante el proceso de inicio de sesión.
+
+**2. Update store.js:**
+  - **Archivo modificado:** js/store.js.
+   
+  - **Cambio realizado:** Actualicé la URL del proyecto de Supabase y su clave pública (SUPABASE_KEY), utilizadas para inicializar la conexión entre Well Well y la base de datos.
+    
+  - **Decisión de desarrollo:** Incorporar la lógica necesaria para relacionar al usuario autenticado con su registro de paciente y permitir que Well Well recupere su información correspondiente.
+
+**3. Add test case B details to BITÁCORA.md:** Documenté los detalles de la segunda prueba realizada para validar el funcionamiento del acceso de pacientes.
+
+**4. Update output images and decision descriptions in BITÁCORA.md:** Actualicé la evidencia visual y las explicaciones de las decisiones tomadas durante el proceso de construcción.
+
+**Evidencia: Historial de commits del repositorio:** https://github.com/Ivanka20/well-well-2/commits/main/
+
+
 **Documentación del chatbot "Lupita"**
 
 Las instrucciones del modelo de IA de Lupita están guardadas en el repositorio en prompts/lupita-system-prompt.md. La función api/chat.js las lee de ese archivo en cada llamada, así que el archivo es la versión que usa el modelo.
