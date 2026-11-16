@@ -122,15 +122,15 @@ Dame el código necesario para hacer esto posible y que yo pueda agregarlo a mi 
    **Output real:** No sugirió ningún lugar, solo dejo que el usuario ingresara su información de búsqueda, pero en el mapa no marcó ningún lugar.
 
 **Mi decisión:** RECHAZAR. La IA no sugirió ningún centro de fisioterapia dentro del radio de 5 km ni marcó ningún lugar en el mapa.
-Asimismo, el sistema omitió procesar los parámetros clave del input, como la ubicación de referencia en el Estadio Banorte y el filtro de accesibilidad para silla de ruedas.En consecuencia, rechazar el resultado es un juicio correcto, ya que el modelo no entregó la información útil ni cumplió con los requerimientos de la búsqueda.
+Asimismo, el sistema omitió procesar los parámetros clave del input, como la ubicación de referencia en el Estadio Banorte y el filtro de accesibilidad para silla de ruedas. No puedo aceptar  el resultado, ya que el modelo no entregó la información útil ni cumplió con los requerimientos de la búsqueda.
 
 La prueba C no cumplió con los criterios de funcionamiento de la especificación. Al ingresar una categoría, ubicación, radio de búsqueda y filtro de accesibilidad, la app no mostró ningún establecimiento ni marcador en el mapa.
 
 **Problema detectado:** Al ingresar una categoría, ubicación de referencia, radio de búsqueda y filtro de accesibilidad, la aplicación no mostraba establecimientos ni marcadores en el mapa.
 
-**Prompt ingresado:** "Analiza la implementación actual y determina por qué no se están procesando correctamente los parámetros de búsqueda o por qué no se están mostrando los resultados de Overpass API. Quiero que me expliques qué parte de la implementación está fallando. No quiero que simplemente ocultes el error ni que muestres resultados ficticios.
+**Prompt ingresado:** "Analiza la implementación actual y determina por qué no se están procesando correctamente los parámetros de búsqueda o por qué no se están mostrando los resultados de Overpass API. Quiero que me expliques qué parte de la implementación está fallando. No quiero que ocultes el error ni que muestres resultados falsos.
 
-Después, propón una corrección que permita procesar la ubicación de referencia, consultar establecimientos reales, aplicar correctamente el radio de búsqueda, aplicar el filtro de accesibilidad cuando existan datos registrados, mostrar los establecimientos encontrados en una lista y en el mapa y respetar los criterios de mi especificación original y explícame qué archivos y funciones necesitas modificar."
+Después, dame una solución que permita procesar la ubicación de referencia, consultar establecimientos reales, aplicar correctamente el radio de búsqueda, aplicar el filtro de accesibilidad cuando existan datos registrados, mostrar los establecimientos encontrados en una lista y en el mapa y respetar los criterios de mi especificación original y explícame qué archivos y funciones necesitas modificar."
 
 **Respuesta de la IA:**
 
@@ -144,7 +144,7 @@ Claude Code realizó cambios para solucionar ambos problemas:
 
 **Pruebas realizadas por la IA:**
 
-Claude Code probó búsquedas reales en Coyoacán. En una de ellas, consultó laboratorios dentro de un radio de 20 km con el filtro de elevador activado. Reportó que encontró 38 establecimientos antes de aplicar el filtro y que, después de la corrección, pudo mostrar los nombres y direcciones de los resultados, así como 20 marcadores en el mapa.También comprobó la generación de rutas a pie y en automóvil, incluyendo la línea de recorrido, el tiempo estimado, la distancia y las indicaciones.
+Claude Code probó búsquedas reales en Coyoacán. En una de ellas, consultó laboratorios dentro de un radio de 20 km con el filtro de elevador activado. Reportó que encontró 38 establecimientos antes de aplicar el filtro y que, después de la corrección, pudo mostrar los nombres y direcciones de los resultados, así como 20 marcadores en el mapa. También comprobó la generación de rutas a pie y en automóvil, incluyendo la línea de recorrido, el tiempo estimado, la distancia y las indicaciones.
 
 **Decisión:** REVISAR. Todavía necesito comprobar personalmente que la búsqueda funciona con los parámetros del Caso de Prueba C, especialmente con la ubicación del Estadio Banorte, el radio de 5 km y el filtro de entrada accesible para silla de ruedas. Las pruebas realizadas por la IA utilizaron otra categoría, ubicación, radio y característica de accesibilidad, por lo que no son suficientes para dar por validado el caso original.
 
@@ -182,4 +182,4 @@ Las instrucciones del modelo de IA de Lupita están guardadas en el repositorio 
 
 **Uso de IA**
 
-Para todo mi proyecto usé Claude. Para crear el código me apoyé en Claude Code: le di todas las instrucciones lo más específicas posible y lo fui guiando para que codificara como tenía en mente mi app. Para el diseño utilicé Claude Design: diseñé las animaciones del chatbot y la presentación visual de la app. Para la creación de la idea y propósito de la app no utilicé para nada IA.
+Para todo mi proyecto usé Claude. Para crear el código me apoyé en Claude Code: le di todas las instrucciones lo más específicas posible y lo fui guiando para que codificara como tenía en mente mi app. Para el diseño utilicé Claude Design: diseñé las animaciones del chatbot y la presentación visual de la app. Para la creación de la idea y el propósito de la app no utilicé para nada IA.
