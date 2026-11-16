@@ -28,30 +28,26 @@ Después de la auditoría, implementé los consejos de mi auditor y los agregué
 
 **Prompt:**
 
-"Retomando el código de mi app, well well, que ya tenemos hasta ahora, vamos a agregarle otra función diferente: observar el expediente médico, exportar el expediente médico, ingresar a la sección y demás funciones que desarrollamos hasta ahora. La nueva función será una herramienta que realmente ayude a los pacientes y sus familiares a resolver las necesidades que surgen después de salir del hospital.
-El problema que resuelve esta nueva función es:
-Imagina que un niño sale del hospital después de recibir tratamiento por una quemadura. Su familia tiene que organizar su recuperación, pero ahora se enfrenta a nuevas preguntas:
+"Retomando el código de mi app, well well, que ya tenemos hasta ahora, vamos a agregarle otra función diferente de observar el expediente médico, exportar el expediente médico, ingresar a la sección y demás funciones que desarrollamos hasta ahora. La nueva función será una herramienta que realmente ayude a los pacientes y sus familiares a resolver las necesidades que surgen después de salir del hospital.
+Para establecer el problema a solucionar, quiero que imagines que un niño sale del hospital después de recibir tratamiento por una quemadura. Su familia tiene que organizar su recuperación, pero ahora se enfrenta a nuevas preguntas:
 * ¿Dónde puede continuar sus sesiones de rehabilitación?
 * ¿Qué clínicas ofrecen atención especializada?
 * ¿Dónde puede encontrar una farmacia cercana?
 * ¿Dónde puede acudir si necesita una revisión médica?
 * ¿Qué servicios están cerca de su domicilio?
 
-Actualmente, el familiar tendría que buscar cada servicio por separado en Google Maps, páginas web o directorios diferentes.
-Well Well podría centralizar esa búsqueda en un solo lugar.
+El familiar (o paciente) tendría que buscar cada servicio por separado en Google Maps, páginas web o directorios diferentes. Pero Well Well podría centralizar esa búsqueda en un solo lugar.
 
 La función sería  útil para pacientes pediátricos, personas con movilidad limitada y familiares que están organizando los cuidados posteriores al alta, incluso para pacientes de la tercera edad (un gran paréntesis es que la app ya no solo estará dividida para personal del hospital y para pacientes pediátricos y familiares; ahora estará dividida para personal del hospital y pacientes y familiares, así que por favor haz esa modificación).
 
 La nueva herramienta ayudará en estos aspectos:
 
-A. Categorías de servicios
-El usuario puede seleccionar qué tipo de apoyo necesita: hospitales y centros médicos, clínicas de rehabilitación, fisioterapia, farmacias, laboratorios médicos, centros de atención especializada.
+A. El usuario puede seleccionar qué tipo de apoyo necesita: hospitales y centros médicos, clínicas de rehabilitación, fisioterapia, farmacias, laboratorios médicos, centros de atención especializada. Habrá categorías de servicios.
 
 B. Búsqueda por ubicación
 El usuario puede: compartir su ubicación actual, introducir manualmente su dirección o ciudad y elegir un radio de búsqueda de 1, 5, 10 o 20 kilómetros (el sistema consulta establecimientos reales y calcula cuáles están más cerca).
 
-C. Fichas de establecimientos
-Cada resultado podría mostrar:
+C. Cada resultado podría mostrar:
 * Nombre del establecimiento.
 * Tipo de servicio.
 * Dirección.
