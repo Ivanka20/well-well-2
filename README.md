@@ -113,6 +113,53 @@ npx vercel dev
 
 **Al publicar, ejecuta primero `supabase/schema.sql` y después despliega en Vercel.** Si la función de límites no existe, Lupita no llama a la IA y usa el diccionario.
 
+### Diagnóstico de escalabilidad: dónde se rompe primero
+
+| Qué | Número real | Límite | ¿Cuándo se rompe? |
+|---|---|---|---|
+| **Límite global de Lupita** (puesto por mí) | 450 preguntas/día ≈ 13,500/mes | Tope propio en `consumir_pregunta_lupita` | **~1,350 usuarios activos al mes** (con 10 preguntas cada uno); un día con mucho uso lo alcanza antes |
+| Costo de Claude (`claude-opus-5-5`: US$4 por millón de tokens de entrada, US$20 de salida) | ~US$0.010 por pregunta típica; ~US$0.033 en el peor caso (historial completo + 1,024 tokens de respuesta) | Gasto mensual de la cuenta | No se alcanza: el tope global deja el peor caso en ~US$440/mes |
+| Vercel (plan gratuito) | Solo `/api/chat` usa funciones: ≤13,500 invocaciones/mes | 1,000,000 invocaciones/mes | Muy lejos |
+| Cerca de mí (Overpass, Nominatim, OSRM) | Se llaman desde el navegador de cada familia, no desde mi servidor | Uso justo por IP | Solo con muchísimo tráfico; entonces conviene un servidor propio |
+
+**Cuello de botella:** el límite global de Lupita. Lo puse a propósito: cambié un riesgo de **costo** (que llegaría de golpe) por un **límite de uso** que yo controlo. Cuando se alcanza, Lupita responde «ya respondió muchas preguntas hoy» y las familias usan el diccionario local hasta el día siguiente; el resto de la app sigue funcionando.
+
+**La causa de fondo es de arquitectura:** cada pregunta es una llamada nueva a Claude, sin caché. Si 200 familias preguntan qué es «anestesia», se paga 200 veces. El siguiente paso sería guardar en Supabase las respuestas a palabras frecuentes y responder desde ahí. (La caché de prompts de Claude no ayuda aquí: las instrucciones de Lupita son de ~500 tokens, menos que el mínimo que se puede guardar.)
+
+**Lo que todavía falta medir:** cuántas preguntas hace de verdad cada persona (supuse 10 al mes) y cuántos usuarios activos hay.
+
+## Decisiones de diseño vs. sugerencias del IS
+
+IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conversación real del proyecto.
+
+### 1. Seguridad y escalabilidad: Lupita estaba abierta a cualquiera
+
+- **Etapa:** seguridad / escalabilidad (diagnóstico de la Sesión 22).
+- **Qué propuso el IS:** al revisar los números, advirtió que `/api/chat` «acepta preguntas de cualquiera, sin sesión ni límite. En el peor caso, un script a una pregunta por segundo gastaría $500 en unas 4.3 horas y apagaría Lupita para todos». Propuso exigir sesión en `/api/chat` y guardar un límite de preguntas por persona en la base de datos.
+- **Qué decidí:** **aceptar y ampliar.** `api/_acceso.js` exige una sesión real de Supabase antes de llamar a Claude, y la función `consumir_pregunta_lupita` (en `supabase/schema.sql`) cuenta 20 preguntas por persona al día, 5 por minuto y 450 para toda la app. Las visitas y las cuentas demo usan el diccionario local.
+- **Por qué:** el riesgo no era solo de dinero sino de disponibilidad. Una sola persona con un script podía dejar sin Lupita a todas las familias. Un límite solo por persona no basta (alguien puede crear varias cuentas), por eso también hay un tope global, que fija el gasto máximo en ~US$440/mes aunque la app crezca. Si Supabase no responde, la función no llama a la IA (falla cerrada): prefiero que Lupita use el diccionario a gastar sin control.
+
+### 2. Seguridad: entrar solo con el ID de la pulsera
+
+- **Etapa:** funcionalidad / seguridad (inicio de sesión).
+- **Qué propuso el IS:** en la landing page original, el IS advirtió que las cuentas estaban escritas en `script.js` y «cualquiera podría verlos. Con datos médicos reales, el inicio de sesión tiene que validarse en un servidor». Después, al rehacer la app, agregó un **código de acceso** además del ID, porque el ID del paciente va impreso en la pulsera y «cualquiera que lo vea en una pulsera podría entrar».
+- **Qué decidí:** **aceptar.** El inicio de sesión ahora pasa por Supabase Auth (ID + código como contraseña), y las reglas RLS de `supabase/schema.sql` hacen que cada paciente solo lea sus datos y el personal solo los de sus pacientes asignados. Además, las cuentas las crea el hospital: se puede apagar el registro abierto.
+- **Por qué:** es un expediente médico de niñas, niños y adultos mayores. Un ID visible en una pulsera es un identificador, no una contraseña. Validar en el navegador no protege nada porque el código se puede leer; la validación y los permisos tienen que estar en el servidor (Supabase).
+
+### 3. Funcionalidad y deployment: Google Places vs. OpenStreetMap en «Cerca de mí»
+
+- **Etapa:** funcionalidad / deployment.
+- **Qué propuso el IS:** construir «Cerca de mí» con **Google Places API (New)** y **Maps JavaScript API**. Para que funcionara había que activar la facturación en Google Cloud y crear una clave; además, el IS explicó que las condiciones de Google no permiten mostrar resultados de Places en un mapa que no sea de Google.
+- **Qué decidí:** **rechazar** y pedir OpenStreetMap + Overpass API + Leaflet (con Nominatim para direcciones y OSRM para rutas).
+- **Por qué:** con Google, cada búsqueda cuesta dinero y necesita una tarjeta y una clave pública en el navegador, que alguien podría copiar y gastar; también me ataba a usar solo mapas de Google. Con OpenStreetMap no hay clave, ni facturación, ni nada que configurar para desplegar en Vercel. La desventaja es que los datos de la comunidad pueden estar incompletos; por eso la app lo dice, marca las direcciones aproximadas, nunca supone datos de accesibilidad y recomienda llamar antes de ir.
+
+### 4. Mockup: el tono visual de un hospital
+
+- **Etapa:** mockup.
+- **Qué propuso el IS:** en las primeras versiones de la landing y de la app usó una tipografía muy informal para el público infantil.
+- **Qué decidí:** **revisar.** Le pedí «que el diseño no sea como totalmente infantil… Estamos hablando de un hospital», y después que no usara «una tipografía tan informal como antes». Me quedé con la paleta de color y las letras recortadas como detalle, pero con una serif seria (Transcity, o Young Serif como respaldo) para el texto.
+- **Por qué:** la app la usan niñas y niños, pero también sus papás, adultos mayores y el personal del hospital, y muestra información médica. Un tono demasiado infantil le resta confianza a un expediente y a las indicaciones de medicinas; el toque lúdico se queda en Lupita y en los detalles, no en la información.
+
 ## Cuentas de prueba (modo demo, sin Supabase)
 
 | Rol | ID | Código |
