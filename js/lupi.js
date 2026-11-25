@@ -24,6 +24,7 @@
     "alta medica": { nino: "¡Es cuando los doctores dicen que ya estás listo para irte a casa!", adulto: "Autorización médica para salir del hospital, con indicaciones para seguir en casa." },
   };
   const AVISO_SESION = "Para explicarte palabras nuevas necesito que **ingreses con tu ID del hospital**. Mientras tanto, puedo explicarte las palabras de los botones de abajo.";
+  const AVISO_SIN_IA = "Esa palabra **todavía no la conozco**. Puedo explicarte las de los botones de abajo, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, "").trim();
 
   let mode = "adulto";
@@ -66,28 +67,29 @@
       : `<p class="muted">Aquí se guardan las palabras que vayas aprendiendo.</p>`;
   }
 
-  // Pregunta a /api/chat; si falla, usa el mini diccionario
+  // Pregunta a /api/chat; si no hay IA o falla, usa el mini diccionario
   async function fetchAnswer(q, m, hist) {
+    const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
     let answer = null;
     let aviso = "¡Uy! Ahorita no me pude conectar para buscar esa palabra. Intenta de nuevo en un ratito, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
     try {
       const token = window.Store ? await Store.accessToken() : null;
-      if (!token) {
-        aviso = AVISO_SESION;
-      } else {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ question: q, mode: m || mode, history: hist || [] }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) answer = data.answer || null;
-        else if (res.status === 401) aviso = AVISO_SESION;
-        else if (res.status === 429 && data.error) aviso = `${data.error} Si es urgente, pregúntale a tu enfermera o doctor.`;
-      }
+      // Sin sesión y la palabra está en el diccionario: no hace falta llamar al servidor
+      if (!token && hit) return { text: hit[m || mode], guardar: true };
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ question: q, mode: m || mode, history: hist || [] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) answer = data.answer || null;
+      else if (data.codigo === "sin_ia") aviso = AVISO_SIN_IA;
+      else if (res.status === 401) aviso = AVISO_SESION;
+      else if (res.status === 429 && data.error) aviso = `${data.error} Si es urgente, pregúntale a tu enfermera o doctor.`;
     } catch (_) {}
     if (answer) return { text: answer, guardar: true };
-    const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
     return hit ? { text: hit[m || mode], guardar: true } : { text: aviso, guardar: false };
   }
 

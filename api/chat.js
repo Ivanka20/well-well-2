@@ -1,12 +1,15 @@
 // Función serverless de Vercel: POST /api/chat
 // Lupita explica términos médicos en palabras sencillas usando Claude.
-// Requiere la variable de entorno ANTHROPIC_API_KEY en Vercel.
+// Usa la variable de entorno ANTHROPIC_API_KEY de Vercel; sin ella responde 503 "sin_ia".
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { autorizarPregunta } from "./_acceso.js";
 
-const client = new Anthropic();
+// Sin ANTHROPIC_API_KEY la IA está apagada a propósito (versión sin costo):
+// Lupita usa solo su diccionario y nunca se llama a Claude.
+const IA_ACTIVA = Boolean(process.env.ANTHROPIC_API_KEY);
+const client = IA_ACTIVA ? new Anthropic() : null;
 
 // Instrucciones de Lupita (system prompt): se guardan en el repositorio en
 // prompts/lupita-system-prompt.md y se leen de ahí, para que haya una sola versión.
@@ -23,6 +26,9 @@ export default async function handler(req, res) {
   const question = String(body.question || "").trim().slice(0, 300);
   const mode = body.mode === "adulto" ? "adulto" : "nino";
   if (!question) return res.status(400).json({ error: "Falta la pregunta" });
+
+  // IA apagada: se avisa antes de revisar la sesión, así no se gasta ninguna pregunta del límite
+  if (!IA_ACTIVA) return res.status(503).json({ error: "La IA de Lupita no está activada", codigo: "sin_ia" });
 
   // Antes de gastar en la IA: sesión válida y preguntas disponibles
   const acceso = await autorizarPregunta(req);
