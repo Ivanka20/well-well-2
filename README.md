@@ -69,7 +69,8 @@ Ruta: `#/servicios` (abierta para todos, sin iniciar sesión) o `#/servicios/<ca
 
 | Variable | ¿Obligatoria? | Para qué |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | No (la versión publicada no la tiene, ver decisión 5) | Clave de Claude; sin ella Lupita usa solo su diccionario |
+| `LUPITA_IA` | No (la versión publicada no la tiene, ver decisión 5) | Interruptor de la IA: solo con el valor `activa` Lupita llama a Claude |
+| `ANTHROPIC_API_KEY` | Solo si `LUPITA_IA=activa` | Clave de Claude; sin el interruptor no se usa aunque exista |
 | `SUPABASE_URL` | No | URL de tu proyecto de Supabase (si no está, `api/_acceso.js` usa la que viene en el código) |
 | `SUPABASE_PUBLISHABLE_KEY` | No | Clave publicable de Supabase (lo mismo) |
 
@@ -113,7 +114,7 @@ npx vercel dev
 
 **Al publicar, ejecuta primero `supabase/schema.sql` y después despliega en Vercel.** Si la función de límites no existe, Lupita no llama a la IA y usa el diccionario.
 
-**Estado publicado:** https://well-well-2.vercel.app no tiene `ANTHROPIC_API_KEY`, así que Lupita funciona solo con su diccionario y la app cuesta **US$0**. Sin la clave, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA basta con agregar la clave en Vercel y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de abajo.
+**Estado publicado:** https://well-well-2.vercel.app tiene la IA apagada (no existe `LUPITA_IA=activa`), así que Lupita funciona solo con su diccionario y la app cuesta **US$0**. Con la IA apagada, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA hay que agregar **dos** variables en Vercel, `LUPITA_IA=activa` y `ANTHROPIC_API_KEY`, y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de abajo.
 
 ### Diagnóstico de escalabilidad: dónde se rompe primero
 
@@ -170,7 +171,7 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 
 - **Etapa:** deployment / escalabilidad.
 - **Qué propuso el IS:** para que Lupita respondiera palabras nuevas en el link publicado, crear una clave en console.anthropic.com, agregar un método de pago y guardarla como `ANTHROPIC_API_KEY` en Vercel, con un tope de gasto en la consola como segunda protección.
-- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar la clave. Al probar el link sin clave, Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario; lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla.
+- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar la clave. Al probar el link sin clave, Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario; lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Después, aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
 - **Por qué:** es un proyecto escolar sin presupuesto, y ninguna función principal depende de la IA (ruta, medicinas, citas, expediente, avisos, chat, Cerca de mí y el espacio del personal funcionan sin ella). Con la clave, el gasto máximo sería de ~US$440 al mes; sin ella es US$0 y no hay forma de que alguien me genere un cobro. Prefiero una Lupita más limitada pero gratuita y segura que depender de una tarjeta. Como muestra el diagnóstico, esta decisión también cambia el cuello de botella: deja de ser el costo de la IA y pasa a ser Supabase.
 
 ## Cuentas de prueba (modo demo, sin Supabase)
