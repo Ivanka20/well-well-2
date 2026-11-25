@@ -4,6 +4,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { autorizarPregunta } from "./_acceso.js";
 
 const client = new Anthropic();
 
@@ -22,6 +23,10 @@ export default async function handler(req, res) {
   const question = String(body.question || "").trim().slice(0, 300);
   const mode = body.mode === "adulto" ? "adulto" : "nino";
   if (!question) return res.status(400).json({ error: "Falta la pregunta" });
+
+  // Antes de gastar en la IA: sesión válida y preguntas disponibles
+  const acceso = await autorizarPregunta(req);
+  if (!acceso.ok) return res.status(acceso.status).json({ error: acceso.error, codigo: acceso.codigo });
 
   // Historial corto para preguntas de seguimiento ("¿y eso duele?")
   const history = Array.isArray(body.history) ? body.history.slice(-6) : [];

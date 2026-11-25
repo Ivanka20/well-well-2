@@ -23,6 +23,7 @@
     oximetro: { nino: "Es una pincita con lucecita que se pone en tu dedo para ver cuánto aire llega a tu sangre. ¡No duele nada!", adulto: "Aparato en el dedo que mide la oxigenación de la sangre y el pulso." },
     "alta medica": { nino: "¡Es cuando los doctores dicen que ya estás listo para irte a casa!", adulto: "Autorización médica para salir del hospital, con indicaciones para seguir en casa." },
   };
+  const AVISO_SESION = "Para explicarte palabras nuevas necesito que **ingreses con tu ID del hospital**. Mientras tanto, puedo explicarte las palabras de los botones de abajo.";
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[¿?¡!.,]/g, "").trim();
 
   let mode = "adulto";
@@ -68,29 +69,31 @@
   // Pregunta a /api/chat; si falla, usa el mini diccionario
   async function fetchAnswer(q, m, hist) {
     let answer = null;
+    let aviso = "¡Uy! Ahorita no me pude conectar para buscar esa palabra. Intenta de nuevo en un ratito, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, mode: m || mode, history: hist || [] }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        answer = data.answer || null;
+      const token = window.Store ? await Store.accessToken() : null;
+      if (!token) {
+        aviso = AVISO_SESION;
+      } else {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ question: q, mode: m || mode, history: hist || [] }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) answer = data.answer || null;
+        else if (res.status === 401) aviso = AVISO_SESION;
+        else if (res.status === 429 && data.error) aviso = `${data.error} Si es urgente, pregúntale a tu enfermera o doctor.`;
       }
     } catch (_) {}
-    if (!answer) {
-      const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
-      answer = hit
-        ? hit[m || mode]
-        : "¡Uy! Ahorita no me pude conectar para buscar esa palabra. Intenta de nuevo en un ratito, o pregúntale a tu enfermera o doctor: a ellos les encanta explicar.";
-    }
-    return answer;
+    if (answer) return { text: answer, guardar: true };
+    const hit = GLOSARIO[norm(q)] || Object.entries(GLOSARIO).find(([k]) => norm(q).includes(k))?.[1];
+    return hit ? { text: hit[m || mode], guardar: true } : { text: aviso, guardar: false };
   }
 
   // Explicación corta para usar dentro de otras pantallas (Mi ruta, expediente)
   async function explain(q) {
-    return fetchAnswer(q, mode, []);
+    return (await fetchAnswer(q, mode, [])).text;
   }
 
   async function ask(q) {
@@ -115,14 +118,17 @@
     $("#bubbleTerm").textContent = q;
     $("#bubbleText").innerHTML = `<p class="dots-loading"><span></span><span></span><span></span></p>`;
 
-    const answer = await fetchAnswer(q, mode, history.slice(-6));
-
-    history.push({ role: "user", content: q }, { role: "assistant", content: answer });
+    const { text: answer, guardar } = await fetchAnswer(q, mode, history.slice(-6));
     const color = COLORS[loadCards().length % COLORS.length];
-    const cards = loadCards().filter((c) => norm(c.term) !== norm(q));
-    cards.unshift({ term: q.length > 40 ? q.slice(0, 38) + "…" : q, text: answer, color });
-    saveCards(cards);
-    renderCards();
+
+    // Los avisos (sin sesión, límite, sin conexión) no son una palabra aprendida
+    if (guardar) {
+      history.push({ role: "user", content: q }, { role: "assistant", content: answer });
+      const cards = loadCards().filter((c) => norm(c.term) !== norm(q));
+      cards.unshift({ term: q.length > 40 ? q.slice(0, 38) + "…" : q, text: answer, color });
+      saveCards(cards);
+      renderCards();
+    }
 
     setState("talking");
     show(q, answer, color);

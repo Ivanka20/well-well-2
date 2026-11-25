@@ -318,3 +318,76 @@ create policy "lugares: actualizar" on public.lugares_guardados for update to au
 drop policy if exists "lugares: quitar" on public.lugares_guardados;
 create policy "lugares: quitar" on public.lugares_guardados for delete to authenticated
   using (paciente_id = public.mi_paciente_id());
+
+-- =========================================================
+-- LUPITA · límite de preguntas a la IA
+-- Por persona: 20 al día y 5 por minuto.
+-- Para toda la app: 450 al día. En el peor caso (US$0.0326 por
+-- pregunta) son menos de US$455 en un mes de 31 días.
+-- Para cambiarlos, edita los valores de la función y vuelve a ejecutarla.
+-- =========================================================
+create table if not exists public.lupita_uso (
+  perfil_id uuid not null references public.perfiles (id) on delete cascade,
+  dia date not null,
+  preguntas int not null default 0,
+  minuto timestamptz not null,
+  preguntas_minuto int not null default 0,
+  primary key (perfil_id, dia)
+);
+
+create table if not exists public.lupita_uso_global (
+  dia date primary key,
+  preguntas int not null default 0
+);
+
+-- Sin políticas: nadie las lee ni escribe directo, solo la función de abajo.
+alter table public.lupita_uso enable row level security;
+alter table public.lupita_uso_global enable row level security;
+revoke all on public.lupita_uso from anon, authenticated;
+revoke all on public.lupita_uso_global from anon, authenticated;
+
+create or replace function public.consumir_pregunta_lupita() returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_dia date := (now() at time zone 'America/Mexico_City')::date;
+  v_minuto timestamptz := date_trunc('minute', now());
+  v_uso public.lupita_uso%rowtype;
+  v_global int;
+begin
+  -- Solo pacientes y personal registrados por el hospital
+  if v_uid is null or (public.mi_paciente_id() is null and public.mi_personal_id() is null) then
+    return 'sin_sesion';
+  end if;
+
+  insert into public.lupita_uso (perfil_id, dia, minuto)
+  values (v_uid, v_dia, v_minuto)
+  on conflict (perfil_id, dia) do nothing;
+
+  -- Bloquea la fila para que dos preguntas simultáneas no se salten el límite
+  select * into v_uso from public.lupita_uso
+  where perfil_id = v_uid and dia = v_dia
+  for update;
+
+  if v_uso.preguntas >= 20 then return 'limite_diario'; end if;
+  if v_uso.minuto = v_minuto and v_uso.preguntas_minuto >= 5 then return 'limite_minuto'; end if;
+
+  insert into public.lupita_uso_global as g (dia, preguntas)
+  values (v_dia, 1)
+  on conflict (dia) do update set preguntas = g.preguntas + 1
+  where g.preguntas < 450
+  returning g.preguntas into v_global;
+
+  if v_global is null then return 'limite_global'; end if;
+
+  update public.lupita_uso u
+  set preguntas = u.preguntas + 1,
+      preguntas_minuto = case when u.minuto = v_minuto then u.preguntas_minuto + 1 else 1 end,
+      minuto = v_minuto
+  where u.perfil_id = v_uid and u.dia = v_dia;
+
+  return 'ok';
+end $$;
+
+revoke all on function public.consumir_pregunta_lupita() from public, anon;
+grant execute on function public.consumir_pregunta_lupita() to authenticated;

@@ -335,5 +335,12 @@
     return () => sb.removeChannel(ch);
   }
 
-  window.Store = { state, login, restore, logout, myPatients, messages, sendMessage, deleteMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf, places, savePlace, removePlace };
+  // Credencial de la sesión real para /api/chat (el modo demo no tiene)
+  async function accessToken() {
+    if (state.mode !== "supabase" || !sb) return null;
+    const { data } = await sb.auth.getSession();
+    return (data && data.session && data.session.access_token) || null;
+  }
+
+  window.Store = { state, login, restore, logout, accessToken, myPatients, messages, sendMessage, deleteMessage, markRead, avisos, addAviso, deleteAviso, sala, sendSala, deleteSala, subscribe, keyOf, places, savePlace, removePlace };
 })();
