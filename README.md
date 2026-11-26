@@ -76,9 +76,11 @@ api/_acceso.js      exige sesión y descuenta el límite de preguntas antes de l
 prompts/lupita-system-prompt.md  instrucciones de Lupita para el modelo de IA (system prompt)
 vercel.json         incluye la carpeta prompts/ en la función api/chat.js y agrega encabezados de seguridad
 .vercelignore       archivos del repositorio que no se publican en el link (supabase/)
+evidencia/          capturas de las pruebas (por ejemplo, el filtro del chat en Supabase)
 robots.txt          qué pueden indexar los buscadores (no es un candado: ver Capas de seguridad)
 package.json        dependencia del SDK de Anthropic que usa api/chat.js
-autoevaluacion.md   autoevaluación (el mismo texto que la sección del final de este README)
+autoevaluacion.md   autoevaluación (10-15 líneas) y declaración de uso de IA
+BITÁCORA.md         bitácora del proyecto: pruebas A, B y C, auditoría con una compañera y uso de IA
 supabase/schema.sql tablas y reglas de seguridad (RLS)
 supabase/seed.sql   datos de ejemplo (opcional)
 ```
@@ -224,7 +226,7 @@ well well guarda información médica de niñas, niños y adultos mayores, así 
 | **Filtro de groserías básico** (lista corta de palabras) | Se evade con variaciones («t0nto») o groserías que no están en la lista | Lista más amplia, normalizar números y símbolos, y seguir con la moderación humana como respaldo |
 | **Sin registro de auditoría** | No queda registro de quién abrió qué expediente | Tabla de auditoría con triggers (quién, qué, cuándo), que exigen las normas de expediente clínico |
 | **Sin política de contenido (CSP)** | Si apareciera un XSS, el navegador no lo bloquearía | Agregar `Content-Security-Policy` en `vercel.json` con los dominios exactos (Supabase, OpenStreetMap, Leaflet, fuentes) y probar cada función |
-| **Plan gratuito de Supabase** | Sin respaldos programados ni recuperación a un punto en el tiempo | Plan de pago con respaldos antes de guardar datos reales |
+| **Plan gratuito de Supabase** | Sin respaldos programados ni recuperación a un punto en el tiempo. Además, Supabase **pausa el proyecto** si pasa una semana sin uso: me pasó antes de entregar. Mientras está pausado, la app no se cae, porque `js/store.js` usa el modo demo si Supabase no responde. Pero los datos reales no están disponibles hasta restaurarlo | Plan de pago con respaldos, sin pausas, antes de guardar datos reales |
 | **Servidores públicos de mapas** (Overpass, Nominatim, OSRM) | Pueden fallar o limitar el uso. No es un riesgo de datos, sino de disponibilidad | Servidor propio si el tráfico crece (ver diagnóstico) |
 
 ## Decisiones de diseño vs. sugerencias del IS
@@ -272,8 +274,37 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 - **Etapa:** seguridad (revisión final antes de entregar).
 - **Qué propuso el IS:** al revisar la entrega, el IS señaló que el README decía que el chat «bloquea teléfonos, correos, enlaces y groserías», pero ese filtro solo estaba en `js/app.js`. En Supabase, la tabla `sala_mensajes` solo limitaba el largo (240 caracteres). Cualquiera con sesión podía saltarse el filtro mandando el mensaje directo a la API de Supabase, también en la sala «Peques». Propuso repetir el filtro como regla en la base de datos.
 - **Qué decidí:** **aceptar.** Agregué la regla `sala_mensajes_sin_datos_ni_groserias` en `supabase/schema.sql`, con los mismos patrones del navegador. Dejé el filtro del navegador porque da un aviso amable al instante, pero la regla que manda es la del servidor. La puse como `not valid` para que no rechace mensajes viejos, solo los nuevos. No moví a la base de datos el problema de `autor_nombre` (alguien podría usar «Recepción» como apodo): lo dejé documentado en [Vulnerabilidades conocidas](#vulnerabilidades-conocidas-y-qué-haría-para-cerrarlas) como siguiente paso.
-- **Cómo lo verifiqué:** en el SQL Editor de Supabase intenté insertar en `sala_mensajes` un mensaje con un teléfono. Antes de la regla se guardaba; después, Supabase lo rechaza con el error `sala_mensajes_sin_datos_ni_groserias`. Un mensaje normal se sigue guardando.
+- **Cómo lo verifiqué:** en el SQL Editor de Supabase intenté insertar en `sala_mensajes` un mensaje con un teléfono. Antes de la regla se guardaba; después, Supabase lo rechaza con el error `sala_mensajes_sin_datos_ni_groserias`. Un mensaje normal se sigue guardando. Capturas: [antes](evidencia/filtro-antes.png) y [después](evidencia/filtro-despues.png).
 - **Por qué:** es la misma lección que el IS me señaló en el Assignment 1 con `script.js`: **lo que se valida solo en el navegador no protege nada**, porque cualquiera puede saltarse el navegador. En una sala donde escriben niñas y niños, un teléfono o un enlace de un desconocido es justo lo que hay que impedir. Lo documento como hallazgo del IS y no mío: ya conocía esa lección, pero no la había aplicado al chat.
+
+## Historial de commits: qué decisión hay detrás de cada mensaje genérico
+
+Subí casi todo con **«Add files via upload»** desde la página de GitHub, que pone ese mensaje por defecto. Por eso 40 de los 50 commits tienen mensajes genéricos. No reescribo el historial: aquí explico los commits importantes. Desde la entrega final, cada commit lleva un mensaje que describe la decisión.
+
+**Commits importantes** (del más antiguo al más reciente):
+
+| Commit | Mensaje original | Qué decisión hay detrás |
+|---|---|---|
+| `f6fc833` | Add files via upload | Primera versión de la app (Assignment 2): espacios de paciente y personal, Lupita, Supabase con RLS y modo demo |
+| `2eac841`, `e00adf9` | Update print statement from 'Hello' to 'Goodbye' | **El mensaje no tiene nada que ver con el cambio.** Reescriben `app.js` (dosis del día, «Lo que sigue», «Deshacer») y `styles.css` con la paleta y las fuentes nuevas (decisión 4) |
+| `8b51ed9` | Add files via upload | Seguridad: regla RLS para que el personal pueda deshacer **solo sus propios** avisos |
+| `bb57795` | Add files via upload | Crea **Cerca de mí** (`js/servicios.js`) y los lugares guardados |
+| `7b1b3ce` | Add files via upload | Versión con **Google Maps/Places**: la propuesta del IS de la decisión 3 |
+| `be1dacb` | Add files via upload | **Rechazo Google** y cambio a OpenStreetMap + Overpass + Nominatim (decisión 3) |
+| `39806e3` | Add files via upload | Mapa con Leaflet, marcadores numerados y rutas paso a paso con OSRM |
+| `12db2b9`, `d0cdfa8` | Update store.js / Add files via upload | Cambio la conexión a otro proyecto de Supabase y en el siguiente commit la regreso al original (`xkfoiggivoxiwwkzcpbe`), que es el que usa la app |
+| `dbe7d11` | Add files via upload | Saco las instrucciones de Lupita del código a `prompts/` para tener una sola versión, y creo `vercel.json` para incluirlas al desplegar |
+| `431bbf4` | Add files via upload | **Seguridad y escalabilidad:** Lupita exige sesión real y tiene límites de 20/5/450 (decisión 1) |
+| `da4228c` | Add files via upload | **Costo:** Lupita funciona sin IA y responde `sin_ia` sin gastar del límite (decisión 5) |
+| `02b2d27` | Add files via upload | **Costo:** interruptor explícito `LUPITA_IA=activa` (decisión 5) |
+| `9f8ba30` | Add files via upload | **Seguridad:** encabezados HTTP, `robots.txt` y las secciones de mercado y capas de seguridad |
+
+**Los demás commits genéricos** son menores: colores y estilos (`21e76e9`, `53dd4e9`, `5c5251d`, `8bf5c74`, `a58e7c4`, `9c4fa36`), el rediseño del personaje de Lupita (`ce2eae2`), documentación del README y la bitácora (los «Update BITÁCORA.md», `6da5909`, `45120c9`, `5b3fe8a`, `9a2eb0e`) y dos commits vacíos (`720d438`, `66e6c9e`).
+
+**Errores que reconozco en el historial:**
+- Tres commits tienen mensajes que suenan bien pero **no coinciden con lo que cambiaron**: `9811a37` («Add SQL function to get patient ID») y `a65b026` solo agregan líneas en blanco, y `db13917` solo arregla una viñeta.
+- `986bcc2` subió por error una copia de los archivos JS en `js/js/`. La app no la usa, y la borré en la entrega final.
+- `js/config.example.js` quedó de la versión con Google (`7b1b3ce`) aunque rechacé esa opción. También lo borré en la entrega final.
 
 ## Cuentas de prueba (modo demo, sin Supabase)
 
@@ -286,21 +317,3 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 | Personal del hospital (recepción) | REC-0042 / REC-0107 | apoyo26 |
 
 En modo demo los mensajes se guardan solo en ese navegador (abre dos pestañas para ver paciente y personal conversando). Si el ID existe en Supabase, se usa Supabase.
-
-## Autoevaluación
-
-El LO en el que más crecí es #Accountability: pasé de aceptar lo que el IS me entregaba a hacerme responsable de cada decisión, admitir mis errores y comprobarlos con números de mi propio proyecto.
-En el Assignment 1 (la landing page), el IS me advirtió que las cuentas estaban escritas en `script.js` y que cualquiera podía leerlas; yo no lo había notado.
-En la Sesión 22 diagnostiqué mal el cuello de botella: dije que era el costo de Claude (tope de $500 al mes con unos 4,545 usuarios), sin ver que `/api/chat` estaba abierta a cualquiera y que un script podía gastar esos $500 en unas 4.3 horas.
-No borré ese error: lo dejé en el README junto a la versión corregida y lo convertí en una decisión: sesión real de Supabase (`api/_acceso.js`) y límites de 20 preguntas por persona al día, 5 por minuto y 450 en toda la app.
-Además, encontré yo, sin que el IS los señalara, dos errores en el link publicado: Lupita decía «no me pude conectar» y gastaba una pregunta, y la IA seguía encendida después de quitar la clave; por eso agregué el interruptor `LUPITA_IA=activa` (decisión 5).
-También llevé la transparencia a la interfaz, donde no se suele pensar en ella: la app avisa que los datos de OpenStreetMap pueden estar incompletos, marca las direcciones «(aprox.)», nunca supone datos de accesibilidad y Lupita dice «todavía no la conozco» en lugar de inventar.
-En otras etapas rechacé Google Places por la facturación y la clave pública en el navegador, y pedí un diseño que no fuera «totalmente infantil» porque es la app de un hospital.
-#AlgorithmicStrategies: dividí cada pregunta a Lupita en pasos ordenados que ejecuta la máquina, primero los que no cuestan (¿la IA está encendida?, ¿hay sesión?, ¿quedan preguntas?) y al final la llamada a Claude; si un paso no se puede comprobar, se detiene (falla cerrada).
-El orden exacto también cubre un caso límite: `consumir_pregunta_lupita` bloquea la fila (`for update`) para que dos preguntas al mismo tiempo no se salten el límite.
-Cerca de mí sigue la misma lógica: texto → categoría → etiquetas de OpenStreetMap → Overpass → distancia (fórmula de Haversine) → ordenar → Nominatim, una por segundo, solo para las direcciones que faltan.
-#ComputationalTools: usé la terminología en contextos cuantitativos distintos: costo por millón de tokens (peor caso $0.0326 × 450 × 30 ≈ $440 al mes), límites de uso por persona y globales, radios en km, y conexiones simultáneas de Supabase Realtime como el cuello de botella sin IA.
-#Organization: el README va de lo general a lo técnico (cómo probar, despliegue, diagnóstico, decisiones) y cada decisión sigue el mismo formato: etapa, propuesta del IS, mi decisión y por qué.
-La evidencia está en «Decisiones de diseño vs. sugerencias del IS», en `supabase/schema.sql`, `api/_acceso.js`, `api/chat.js` y `js/servicios.js`.
-Lo que me llevo: usar IA no me quita la responsabilidad; acepté sus propuestas cuando mis números las respaldaban y las cambié o rechacé cuando chocaban con el costo, la seguridad o el público.
-Todavía me falta medir el uso real (supuse 10 preguntas por persona al mes), y lo dejo documentado como pendiente.

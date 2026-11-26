@@ -141,6 +141,19 @@ create table if not exists public.sala_mensajes (
   created_at timestamptz not null default now()
 );
 
+-- Filtro del chat entre pacientes, también en el servidor.
+-- El navegador (js/app.js, BLOCK y BAD) ya lo revisa, pero eso se puede saltar
+-- mandando el mensaje directo a la API de Supabase. Esta regla aplica a todos.
+-- Bloquea: 7 o más dígitos seguidos (teléfonos), @ (correos y redes), enlaces y groserías.
+-- "not valid": no revisa mensajes viejos, solo los nuevos.
+do $$ begin
+  alter table public.sala_mensajes drop constraint if exists sala_mensajes_sin_datos_ni_groserias;
+  alter table public.sala_mensajes add constraint sala_mensajes_sin_datos_ni_groserias check (
+    texto !~* '(\d[\s-]?){7,}|@|https?://|www\.|\.com\M'
+    and lower(texto) !~ '(idiota|estupido|estúpido|tonto|pendejo|imbecil|imbécil)'
+  ) not valid;
+end $$;
+
 create table if not exists public.animo (
   id uuid primary key default gen_random_uuid(),
   paciente_id uuid not null references public.pacientes (id) on delete cascade,
