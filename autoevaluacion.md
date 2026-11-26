@@ -17,6 +17,6 @@ La evidencia está en "Decisiones de diseño vs. sugerencias del IS", en supabas
 En general, para todos los assignments entendí que usar IA aumenta la responsabilidad que adquiero sobre un proyecto y su implementación. Acepté sus propuestas cuando mis números las respaldaban y las cambié o rechacé cuando chocaban con el costo, la seguridad o el público.
 
 **USO DE IA**
-Para todo mi proyecto usé Claude. Para crear el código me apoyé en Claude Code: le di todas las instrucciones lo más específicas posible y lo fui guiando para que codificara como tenía en mente mi app. La redacción de mi autoevaluación y README la hice yo, pero Claude me ayudó a darle formato, especialmente en el README, y a completar mis ideas con descripciones más completas y a incluir aspectos de mi desarrollo que no contemplé al inicio. También me ayudo a resumir mi historial de commits.
+Para todo mi proyecto usé Claude. Para crear el código me apoyé en Claude Code: le di todas las instrucciones lo más específicas posible y lo fui guiando para que codificara como tenía en mente mi app. Claude redactó borradores de varias secciones para el README; yo decidí qué incluir, las corregí y verifiqué cada dato contra el código y la app. También me ayudo a resumir mi historial de commits.
 
 
