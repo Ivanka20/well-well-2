@@ -7,6 +7,17 @@ Tu proceso médico, a la vista. Sitio web con dos espacios:
 
 El chat entre pacientes bloquea teléfonos, correos, enlaces y groserías, y el personal puede borrar mensajes.
 
+## Para probar la app
+
+**Link publicado:** https://well-well-2.vercel.app
+
+Dos funciones que se pueden probar sin iniciar sesión:
+
+1. **Lupita** (`#/asistente`): escribe una palabra como «anestesia» o «sutura», o una frase como «necesito fisioterapia para mi hijo». Lupita la explica con su diccionario y, si es un lugar, ofrece un botón que abre Cerca de mí.
+2. **Cerca de mí** (`#/servicios`): elige una categoría (por ejemplo *Farmacias*), escribe una ciudad (por ejemplo «Guadalajara, Jalisco») y elige el resultado. Aparece la lista de lugares reales con dirección y distancia, el mapa y el botón **Cómo llegar**. Si una categoría no tiene lugares en 5 km, la app ofrece buscar en 10 km.
+
+Para entrar al espacio del paciente o del personal (`#/ingresar`), usa las [cuentas de prueba](#cuentas-de-prueba-modo-demo-sin-supabase) del final.
+
 ## Rutas
 
 | Ruta | Qué es |
@@ -37,6 +48,8 @@ api/chat.js         función de Vercel que llama a Claude (lee las instrucciones
 api/_acceso.js      exige sesión y descuenta el límite de preguntas antes de llamar a Claude
 prompts/lupita-system-prompt.md  instrucciones de Lupita para el modelo de IA (system prompt)
 vercel.json         incluye la carpeta prompts/ en la función api/chat.js
+package.json        dependencia del SDK de Anthropic que usa api/chat.js
+autoevaluacion.md   autoevaluación (el mismo texto que la sección del final de este README)
 supabase/schema.sql tablas y reglas de seguridad (RLS)
 supabase/seed.sql   datos de ejemplo (opcional)
 ```
@@ -65,7 +78,8 @@ Ruta: `#/servicios` (abierta para todos, sin iniciar sesión) o `#/servicios/<ca
 
 1. Sube esta carpeta a un repositorio de GitHub.
 2. En Vercel: **Add New → Project**, importa el repositorio. Framework: **Other**. No hace falta comando de build.
-3. En **Settings → Environment Variables** agrega `ANTHROPIC_API_KEY` con tu clave de https://console.anthropic.com. Vuelve a desplegar.
+3. Listo: así se publica sin IA (Lupita usa su diccionario y la app cuesta US$0).
+4. *(Opcional, para encender la IA)* En **Settings → Environment Variables** agrega **las dos** variables: `LUPITA_IA` con el valor `activa` y `ANTHROPIC_API_KEY` con tu clave de https://console.anthropic.com. Vuelve a desplegar. Con solo la clave, la IA sigue apagada.
 
 | Variable | ¿Obligatoria? | Para qué |
 |---|---|---|
@@ -74,7 +88,7 @@ Ruta: `#/servicios` (abierta para todos, sin iniciar sesión) o `#/servicios/<ca
 | `SUPABASE_URL` | No | URL de tu proyecto de Supabase (si no está, `api/_acceso.js` usa la que viene en el código) |
 | `SUPABASE_PUBLISHABLE_KEY` | No | Clave publicable de Supabase (lo mismo) |
 
-**Modelo de IA (si se agrega la clave):** `api/chat.js` usa `claude-opus-5-5` con esfuerzo bajo (`effort: "low"`), máximo 1024 tokens por respuesta y respaldo automático de modelo si está saturado. Para cambiar el modelo o el costo, edita esa llamada.
+**Modelo de IA (si se enciende la IA):** `api/chat.js` usa `claude-opus-5-5` con esfuerzo bajo (`effort: "low"`), máximo 1024 tokens por respuesta y respaldo automático de modelo si está saturado. Para cambiar el modelo o el costo, edita esa llamada.
 
 ## Probar en tu computadora
 
@@ -84,7 +98,7 @@ Cualquier servidor estático sirve para ver el sitio (Lupita usará el diccionar
 npx serve .
 ```
 
-Para probar también `/api/chat` con la IA, usa la CLI de Vercel con `ANTHROPIC_API_KEY` en un archivo `.env.local` (ya está en `.gitignore`):
+Para probar también `/api/chat` con la IA, usa la CLI de Vercel con `LUPITA_IA=activa` y `ANTHROPIC_API_KEY` en un archivo `.env.local` (ya está en `.gitignore`). Sin `LUPITA_IA=activa`, `/api/chat` responde `sin_ia`:
 
 ```
 npx vercel dev
@@ -112,11 +126,25 @@ npx vercel dev
 
 `/api/chat` solo responde a pacientes y personal con sesión real de Supabase. Límites: **20 preguntas por persona al día, 5 por minuto y 450 en toda la app al día** (se cambian en `consumir_pregunta_lupita`, en `supabase/schema.sql`). Las visitas y las cuentas demo usan el diccionario local.
 
+**Qué pasa con cada pregunta, en orden.** Primero van los pasos que no cuestan nada y al final el único que cuesta. Si un paso falla o no se puede comprobar, la pregunta se detiene ahí:
+
+1. **En el navegador** (`js/lupi.js`): si no hay sesión y la palabra está en el diccionario, Lupita responde sin llamar al servidor. Si el servidor no da una respuesta, también usa el diccionario.
+2. **`api/chat.js`:** acepta solo `POST` con una pregunta de hasta 300 caracteres.
+3. **¿La IA está encendida?** Se necesitan `LUPITA_IA=activa` y la clave. Si no, responde `503 sin_ia` sin revisar la sesión ni gastar del límite.
+4. **¿Hay sesión?** (`api/_acceso.js`) Pide un token `Bearer` válido. Si no hay, responde `401`.
+5. **¿Quedan preguntas?** (`consumir_pregunta_lupita`, en Supabase) Revisa en este orden: que sea paciente o personal registrado, 20 al día por persona, 5 por minuto y 450 al día en toda la app. La función bloquea la fila de la persona (`for update`), así dos preguntas al mismo tiempo no pueden saltarse el límite.
+6. **Si Supabase no responde en 5 segundos** o devuelve algo inesperado: `503` y no se llama a Claude (falla cerrada).
+7. **Solo entonces se llama a Claude**, con un historial de máximo 6 mensajes y una respuesta de máximo 1024 tokens.
+
 **Al publicar, ejecuta primero `supabase/schema.sql` y después despliega en Vercel.** Si la función de límites no existe, Lupita no llama a la IA y usa el diccionario.
 
-**Estado publicado:** https://well-well-2.vercel.app tiene la IA apagada (no existe `LUPITA_IA=activa`), así que Lupita funciona solo con su diccionario y la app cuesta **US$0**. Con la IA apagada, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA hay que agregar **dos** variables en Vercel, `LUPITA_IA=activa` y `ANTHROPIC_API_KEY`, y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de abajo.
+**Estado publicado:** https://well-well-2.vercel.app tiene la IA apagada (no existe `LUPITA_IA=activa`), así que Lupita funciona solo con su diccionario y la app cuesta **US$0**. Con la IA apagada, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA hay que agregar **dos** variables en Vercel, `LUPITA_IA=activa` y `ANTHROPIC_API_KEY`, y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de arriba.
 
 ### Diagnóstico de escalabilidad: dónde se rompe primero
+
+**Diagnóstico original (Sesión 22):** dije que el cuello de botella era el costo de Claude. Con un tope de gasto de US$500 al mes y ~US$0.011 por pregunta, se llegaría al tope con unos **4,545 usuarios** activos al mes (10 preguntas cada uno). Ese diagnóstico no tomaba en cuenta que `/api/chat` estaba abierta a cualquiera (ver decisión 1), y el número cambió cuando agregué los límites. Abajo está la versión corregida.
+
+**Usuarios objetivo (supuesto):** la app es para un hospital, así que el objetivo es **unas 500 familias activas al mes**. Con 10 preguntas por familia serían ~5,000 preguntas al mes (~170 al día), por debajo del tope de 450 al día. Con este objetivo, la app funciona con los planes gratuitos aunque se encienda la IA.
 
 **Versión publicada (sin IA):** el costo es US$0 y Lupita deja de ser un riesgo. Lo primero que se acercaría a un límite es **Supabase**, porque cada persona con sesión abre una conexión en tiempo real (`Store.subscribe` en `js/store.js`) para recibir mensajes y avisos al momento; el plan gratuito limita cuántas conexiones simultáneas puede haber. Si se llena, los mensajes llegarían al recargar la página en lugar de al instante.
 
@@ -145,6 +173,7 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 - **Qué propuso el IS:** al revisar los números, advirtió que `/api/chat` «acepta preguntas de cualquiera, sin sesión ni límite. En el peor caso, un script a una pregunta por segundo gastaría $500 en unas 4.3 horas y apagaría Lupita para todos». Propuso exigir sesión en `/api/chat` y guardar un límite de preguntas por persona en la base de datos.
 - **Qué decidí:** **aceptar y ampliar.** `api/_acceso.js` exige una sesión real de Supabase antes de llamar a Claude, y la función `consumir_pregunta_lupita` (en `supabase/schema.sql`) cuenta 20 preguntas por persona al día, 5 por minuto y 450 para toda la app. Las visitas y las cuentas demo usan el diccionario local.
 - **Por qué:** el riesgo no era solo de dinero sino de disponibilidad. Una sola persona con un script podía dejar sin Lupita a todas las familias. Un límite solo por persona no basta (alguien puede crear varias cuentas), por eso también hay un tope global, que fija el gasto máximo en ~US$440/mes aunque la app crezca. Si Supabase no responde, la función no llama a la IA (falla cerrada): prefiero que Lupita use el diccionario a gastar sin control.
+- **Cómo lo verifiqué:** volví a calcular el gasto con el peor caso y los números del código (US$0.0326 por pregunta × 450 al día × 30 días ≈ US$440 al mes). Con eso vi que mi diagnóstico de la Sesión 22 ya no era correcto: el costo dejó de ser lo primero que se rompe y el límite pasó a ser el tope global (~1,350 usuarios al mes). Corregí el número en este README.
 
 ### 2. Seguridad: entrar solo con el ID de la pulsera
 
@@ -171,7 +200,7 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 
 - **Etapa:** deployment / escalabilidad.
 - **Qué propuso el IS:** para que Lupita respondiera palabras nuevas en el link publicado, crear una clave en console.anthropic.com, agregar un método de pago y guardarla como `ANTHROPIC_API_KEY` en Vercel, con un tope de gasto en la consola como segunda protección.
-- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar la clave. Al probar el link sin clave, Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario; lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Después, aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
+- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar la clave. Al probar yo el link publicado sin clave encontré dos errores que el IS no había señalado. Primero: Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario. Lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Segundo: aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
 - **Por qué:** es un proyecto escolar sin presupuesto, y ninguna función principal depende de la IA (ruta, medicinas, citas, expediente, avisos, chat, Cerca de mí y el espacio del personal funcionan sin ella). Con la clave, el gasto máximo sería de ~US$440 al mes; sin ella es US$0 y no hay forma de que alguien me genere un cobro. Prefiero una Lupita más limitada pero gratuita y segura que depender de una tarjeta. Como muestra el diagnóstico, esta decisión también cambia el cuello de botella: deja de ser el costo de la IA y pasa a ser Supabase.
 
 ## Cuentas de prueba (modo demo, sin Supabase)
@@ -188,15 +217,18 @@ En modo demo los mensajes se guardan solo en ese navegador (abre dos pestañas p
 
 ## Autoevaluación
 
-El LO en el que más crecí es **Accountability**: pasé de aceptar lo que el sistema inteligente me entregaba a hacerme responsable de cada decisión y de comprobarla con números de mi propio proyecto.
-Al inicio del curso, en la landing page, el IS me advirtió que las cuentas estaban escritas en `script.js` y que cualquiera podía leerlas; yo no lo había notado.
-En la Sesión 22 mi diagnóstico decía que el cuello de botella era el costo de Claude, con un tope de $500 al mes que llegaría con unos 4,545 usuarios.
-Al revisar ese diagnóstico, el IS me hizo notar algo más grave: `/api/chat` aceptaba preguntas de cualquiera, sin sesión ni límite, y un script podía gastar $500 en unas 4.3 horas y dejar sin Lupita a todas las familias.
-Decidí no quedarme con el diagnóstico en papel: Lupita ahora exige sesión real de Supabase (`api/_acceso.js`) y la función `consumir_pregunta_lupita` limita 20 preguntas por persona al día, 5 por minuto y 450 en toda la app.
-Después volví a revisar mis propios números contra el código: con ese tope global, el gasto máximo es de unos $440 al mes, así que el costo ya no es lo primero que se rompe.
-El cuello de botella real es el límite que yo puse, que se alcanza con unos 1,350 usuarios al mes, y lo corregí en este README en lugar de dejar el número viejo.
-Lo mismo hice en otras etapas: rechacé Google Places para «Cerca de mí» porque necesitaba facturación y una clave pública en el navegador, y elegí OpenStreetMap aunque sus datos sean incompletos.
-También revisé el diseño: pedí que no fuera «totalmente infantil» porque es la app de un hospital que también usan adultos mayores y personal médico.
-La evidencia está en la sección «Decisiones de diseño vs. sugerencias del IS» de este README, en `supabase/schema.sql` y en `api/_acceso.js`.
-Lo que me llevo es que usar IA no me quita la responsabilidad: si Lupita gasta de más o expone un expediente, la decisión fue mía, no del modelo.
-Todavía me falta medir el uso real (supuse 10 preguntas por persona al mes), y eso también lo dejo documentado como pendiente.
+El LO en el que más crecí es #Accountability: pasé de aceptar lo que el IS me entregaba a hacerme responsable de cada decisión, admitir mis errores y comprobarlos con números de mi propio proyecto.
+En el Assignment 1 (la landing page), el IS me advirtió que las cuentas estaban escritas en `script.js` y que cualquiera podía leerlas; yo no lo había notado.
+En la Sesión 22 diagnostiqué mal el cuello de botella: dije que era el costo de Claude (tope de $500 al mes con unos 4,545 usuarios), sin ver que `/api/chat` estaba abierta a cualquiera y que un script podía gastar esos $500 en unas 4.3 horas.
+No borré ese error: lo dejé en el README junto a la versión corregida y lo convertí en una decisión: sesión real de Supabase (`api/_acceso.js`) y límites de 20 preguntas por persona al día, 5 por minuto y 450 en toda la app.
+Además, encontré yo, sin que el IS los señalara, dos errores en el link publicado: Lupita decía «no me pude conectar» y gastaba una pregunta, y la IA seguía encendida después de quitar la clave; por eso agregué el interruptor `LUPITA_IA=activa` (decisión 5).
+También llevé la transparencia a la interfaz, donde no se suele pensar en ella: la app avisa que los datos de OpenStreetMap pueden estar incompletos, marca las direcciones «(aprox.)», nunca supone datos de accesibilidad y Lupita dice «todavía no la conozco» en lugar de inventar.
+En otras etapas rechacé Google Places por la facturación y la clave pública en el navegador, y pedí un diseño que no fuera «totalmente infantil» porque es la app de un hospital.
+#AlgorithmicStrategies: dividí cada pregunta a Lupita en pasos ordenados que ejecuta la máquina, primero los que no cuestan (¿la IA está encendida?, ¿hay sesión?, ¿quedan preguntas?) y al final la llamada a Claude; si un paso no se puede comprobar, se detiene (falla cerrada).
+El orden exacto también cubre un caso límite: `consumir_pregunta_lupita` bloquea la fila (`for update`) para que dos preguntas al mismo tiempo no se salten el límite.
+Cerca de mí sigue la misma lógica: texto → categoría → etiquetas de OpenStreetMap → Overpass → distancia (fórmula de Haversine) → ordenar → Nominatim, una por segundo, solo para las direcciones que faltan.
+#ComputationalTools: usé la terminología en contextos cuantitativos distintos: costo por millón de tokens (peor caso $0.0326 × 450 × 30 ≈ $440 al mes), límites de uso por persona y globales, radios en km, y conexiones simultáneas de Supabase Realtime como el cuello de botella sin IA.
+#Organization: el README va de lo general a lo técnico (cómo probar, despliegue, diagnóstico, decisiones) y cada decisión sigue el mismo formato: etapa, propuesta del IS, mi decisión y por qué.
+La evidencia está en «Decisiones de diseño vs. sugerencias del IS», en `supabase/schema.sql`, `api/_acceso.js`, `api/chat.js` y `js/servicios.js`.
+Lo que me llevo: usar IA no me quita la responsabilidad; acepté sus propuestas cuando mis números las respaldaban y las cambié o rechacé cuando chocaban con el costo, la seguridad o el público.
+Todavía me falta medir el uso real (supuse 10 preguntas por persona al mes), y lo dejo documentado como pendiente.
