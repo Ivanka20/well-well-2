@@ -73,7 +73,6 @@ api/chat.js         función de Vercel que llama a Claude (lee las instrucciones
 api/_acceso.js      exige sesión y descuenta el límite de preguntas antes de llamar a Claude
 prompts/lupita-system-prompt.md  instrucciones de Lupita para el modelo de IA (system prompt)
 vercel.json         incluye la carpeta prompts/ en la función api/chat.js y agrega encabezados de seguridad
-.vercelignore       archivos del repositorio que no se publican en el link (supabase/)
 evidencia/          capturas de las pruebas (por ejemplo, el filtro del chat en Supabase)
 robots.txt          qué pueden indexar los buscadores (no es un candado: ver Capas de seguridad)
 package.json        dependencia del SDK de Anthropic que usa api/chat.js
