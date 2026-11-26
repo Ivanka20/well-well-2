@@ -6,10 +6,15 @@ En la Sesión 22 diagnostiqué mal el cuello de botella: dije que era el costo d
 Además, encontré, sin que el IS los señalara, dos errores en el link publicado: Lupita decía "no me pude conectar" y gastaba una pregunta, y la IA seguía encendida después de quitar la clave; por eso agregué el interruptor LUPITA_IA=activa.
 También la app avisa que los datos de OpenStreetMap pueden estar incompletos, marca las direcciones (aprox.), nunca supone datos de accesibilidad y Lupita dice "todavía no la conozco" en lugar de inventar.
 En otras etapas rechacé Google Places por la facturación y la clave pública en el navegador, y pedí un diseño que no fuera «totalmente infantil» porque es la app de un hospital.
+
 Sobre #AlgorithmicStrategies, dividí cada pregunta a Lupita en pasos ordenados que ejecuta la máquina, primero los que no cuestan, como ¿la IA está encendida?, ¿hay sesión?, ¿quedan preguntas?, y al final la llamada a Claude, y si un paso no se puede comprobar, se detiene.
 "Cerca de mí" sigue la misma lógica: texto, categoría, etiquetas de OpenStreetMap, Overpass, distancia (fórmula de Haversine), ordenar, Nominatim.
 En #ComputationalTools medí cada parte del proyecto con la unidad que le corresponde: tokens y dólares para la IA ($0.0326 por pregunta en el peor caso × 450 diarios × 30 días = $440 al mes), preguntas por minuto y por día para los límites, kilómetros para "Cerca de mí" y conexiones simultáneas para Supabase Realtime.
+
 En #Organization, el README va de lo general a lo técnico y cada decisión sigue el mismo formato: etapa, propuesta del IS, mi decisión y justificación.
 La evidencia está en "Decisiones de diseño vs. sugerencias del IS", en supabase/schema.sql, api/_acceso.js, api/chat.js y js/servicios.js.
-Lo que me llevo: usar IA no me quita la responsabilidad; acepté sus propuestas cuando mis números las respaldaban y las cambié o rechacé cuando chocaban con el costo, la seguridad o el público.
-Todavía me falta medir el uso real (supuse 10 preguntas por persona al mes), y lo dejo documentado como pendiente.
+
+En general, para todos los assignments entendí que usar IA aumenta la responsabilidad que adquiero sobre un proyecto y su implementación. Acepté sus propuestas cuando mis números las respaldaban y las cambié o rechacé cuando chocaban con el costo, la seguridad o el público.
+
+**USO DE IA**
+
