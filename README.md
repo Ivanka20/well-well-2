@@ -283,8 +283,6 @@ Los demás commits genéricos son menores: colores y estilos (`21e76e9`, `53dd4e
 
 **Errores que reconozco en el historial:**
 - Tres commits tienen mensajes que suenan bien pero no coinciden con lo que cambiaron: `9811a37` («Add SQL function to get patient ID») y `a65b026` solo agregan líneas en blanco, y `db13917` solo arregla una viñeta.
-- `986bcc2` subió por error una copia de los archivos JS en `js/js/`. La app no la usa, y la borré en la entrega final.
-- `js/config.example.js` quedó de la versión con Google (`7b1b3ce`) aunque rechacé esa opción. También lo borré en la entrega final.
 
 ## Cuentas de prueba (modo demo, sin Supabase)
 
