@@ -5,7 +5,7 @@ Tu proceso médico, a la vista. Sitio web con dos espacios:
 - **Pacientes y familiares** (niñas y niños, adultos y personas mayores): ruta, medicinas, citas, expediente, avisos, chat entre pacientes (salas «Pacientes y familias» y «Peques»), Lupita y **Cerca de mí**.
 - **Personal del hospital**: recepción, avisos y expedientes.
 
-El chat entre pacientes bloquea teléfonos, correos, enlaces y groserías, y el personal puede borrar mensajes.
+El chat entre pacientes bloquea teléfonos, correos, enlaces y groserías (en el navegador y también en Supabase), y el personal puede borrar mensajes.
 
 ## Para probar la app
 
@@ -17,6 +17,33 @@ Dos funciones que se pueden probar sin iniciar sesión:
 2. **Cerca de mí** (`#/servicios`): elige una categoría (por ejemplo *Farmacias*), escribe una ciudad (por ejemplo «Guadalajara, Jalisco») y elige el resultado. Aparece la lista de lugares reales con dirección y distancia, el mapa y el botón **Cómo llegar**. Si una categoría no tiene lugares en 5 km, la app ofrece buscar en 10 km.
 
 Para entrar al espacio del paciente o del personal (`#/ingresar`), usa las [cuentas de prueba](#cuentas-de-prueba-modo-demo-sin-supabase) del final.
+
+## Para quién es y por qué un hospital lo usaría
+
+**El problema.** En un hospital, la familia de un paciente recibe mucha información a la vez: estudios, medicinas, horarios, citas y palabras médicas que no conoce. Casi todo llega en papel o de palabra, y se pierde. El personal contesta las mismas preguntas muchas veces, y al salir del hospital la familia no sabe dónde seguir la recuperación (fisioterapia, farmacia, laboratorio).
+
+**Quién lo usa** (cada grupo tiene su propia parte de la app):
+
+| Usuario | Qué necesita | Qué le da well well |
+|---|---|---|
+| Niñas y niños internados | Entender qué les van a hacer sin miedo | Lupita en modo «Para peques», la ruta del tratamiento paso a paso, la sala «Peques» |
+| Familias y cuidadores | Saber qué sigue, cuándo y qué medicina toca | Ruta, medicinas con horario, citas que se agregan al calendario, expediente, avisos |
+| Adultos mayores | Letra clara, pocos pasos, sin tecnicismos | Lupita en modo «Para adultos», tono serio (decisión 4), recordatorios en el calendario |
+| Personal del hospital (recepción) | Menos llamadas repetidas, avisar a todos a la vez | Espacio del personal: avisos, mensajes con sus pacientes asignados, moderación del chat |
+| Pacientes ya en casa | Seguir la recuperación cerca de donde viven | Cerca de mí, con sugerencias según la etapa de recuperación |
+
+**Quién lo pagaría.** El paciente no paga: el cliente es el **hospital**. Lo adopta porque reduce las preguntas repetidas en recepción y mejora la experiencia de la familia. Por eso las cuentas las crea el hospital (decisión 2) y el personal solo ve a sus pacientes asignados.
+
+**Por qué puede funcionar como producto real:**
+- **Cuesta US$0 empezar.** Funciona con los planes gratuitos de Vercel y Supabase y con servicios de mapas sin clave (decisiones 3 y 5). Un hospital puede hacer una prueba piloto sin presupuesto.
+- **Crece por hospital.** El objetivo inicial es un hospital, con unas 500 familias al mes (ver el diagnóstico de escalabilidad). Cada hospital nuevo suma usuarios de forma predecible.
+- **La IA es opcional.** Ninguna función principal depende de ella. Se enciende solo si el hospital decide pagarla, y aun así tiene un tope de gasto.
+
+**Lo que haría falta antes de usarlo con pacientes reales en México:**
+- Cumplir con la ley de protección de datos personales: los datos de salud son *datos sensibles* y requieren aviso de privacidad y consentimiento expreso.
+- Cumplir con las normas del expediente clínico (NOM-004-SSA3-2012) y de los sistemas de información en salud (NOM-024-SSA3-2012).
+- Que el contenido de Lupita lo revise personal médico.
+- Las capas de seguridad pendientes de la sección [Capas de seguridad](#capas-de-seguridad-y-vulnerabilidades-conocidas).
 
 ## Rutas
 
@@ -47,7 +74,9 @@ js/app.js           rutas, carrusel, desplegables, secciones
 api/chat.js         función de Vercel que llama a Claude (lee las instrucciones de prompts/)
 api/_acceso.js      exige sesión y descuenta el límite de preguntas antes de llamar a Claude
 prompts/lupita-system-prompt.md  instrucciones de Lupita para el modelo de IA (system prompt)
-vercel.json         incluye la carpeta prompts/ en la función api/chat.js
+vercel.json         incluye la carpeta prompts/ en la función api/chat.js y agrega encabezados de seguridad
+.vercelignore       archivos del repositorio que no se publican en el link (supabase/)
+robots.txt          qué pueden indexar los buscadores (no es un candado: ver Capas de seguridad)
 package.json        dependencia del SDK de Anthropic que usa api/chat.js
 autoevaluacion.md   autoevaluación (el mismo texto que la sección del final de este README)
 supabase/schema.sql tablas y reglas de seguridad (RLS)
@@ -163,6 +192,41 @@ npx vercel dev
 
 **Lo que todavía falta medir:** cuántas preguntas hace de verdad cada persona (supuse 10 al mes) y cuántos usuarios activos hay.
 
+## Capas de seguridad y vulnerabilidades conocidas
+
+well well guarda información médica de niñas, niños y adultos mayores, así que no confío en una sola protección. Uso varias capas (defensa en profundidad): si una falla, la siguiente sigue protegiendo. También documento lo que **todavía** es vulnerable. Esta versión es un prototipo funcional, no un sistema listo para datos reales, y sé qué falta para que lo sea.
+
+### Capas que ya existen
+
+| # | Capa | Qué evita | Dónde está |
+|---|---|---|---|
+| 1 | **Cuentas creadas por el hospital** + ID y código de acceso | Que cualquiera entre con el ID impreso en la pulsera (decisión 2) | Supabase Auth |
+| 2 | **Reglas RLS en la base de datos** | Que un paciente lea datos de otro, o que el personal vea pacientes que no tiene asignados, aunque alguien llame a la API directo | `supabase/schema.sql` |
+| 3 | **Solo claves publicables en el navegador** | Que alguien copie una clave secreta del código. La clave publicable no da permisos: los da la sesión + RLS | `js/store.js`, `api/_acceso.js` |
+| 4 | **Validación en el servidor** | Que se salten reglas del navegador: filtro del chat (decisión 6), largo de los textos, valores permitidos (`check`) | `supabase/schema.sql` |
+| 5 | **Límites de uso** (rate limiting) y **falla cerrada** en Lupita | Abuso con scripts y gasto sin control (decisión 1) | `api/_acceso.js`, `consumir_pregunta_lupita` |
+| 6 | **Interruptor explícito de la IA** | Gastar dinero por una clave olvidada (decisión 5) | `api/chat.js` |
+| 7 | **Escapar todo el texto** antes de mostrarlo (`esc()`) | Que un mensaje con código HTML/JavaScript se ejecute en el navegador de otra persona (XSS) | `js/app.js` |
+| 8 | **Moderación humana** | Lo que un filtro automático no detecta: el personal puede borrar mensajes de la sala | RLS «sala: moderar» |
+| 9 | **Encabezados de seguridad HTTP** | Que la app se abra dentro de otra página para engañar al usuario (`X-Frame-Options`), que el navegador adivine tipos de archivo (`nosniff`), filtrar la URL a otros sitios (`Referrer-Policy`), usar cámara o micrófono (`Permissions-Policy`) | `vercel.json` |
+| 10 | **Datos mínimos** | En la sala solo aparece apodo + cuarto, nunca el nombre completo. La ubicación de Cerca de mí no se guarda. La etapa de recuperación no usa el diagnóstico | `js/app.js`, `js/servicios.js` |
+| 11 | **HTTPS** | Que alguien lea los datos en el camino | Vercel (automático) |
+
+**Lo que NO es una capa de seguridad: `robots.txt`.** Le pide a los buscadores que no indexen `/api/` ni `/prompts/`, pero es una petición, no un candado: un robot malicioso la ignora, y el archivo es público. De hecho, `/prompts/` sigue siendo accesible. No importa porque no es un secreto: el repositorio también es público. **La seguridad de well well no depende de que el código sea secreto**, sino de la sesión y las reglas RLS. Por eso las instrucciones de Lupita no contienen datos de pacientes ni claves.
+
+### Vulnerabilidades conocidas (y qué haría para cerrarlas)
+
+| Vulnerabilidad | Riesgo | Siguiente paso |
+|---|---|---|
+| **Códigos de acceso cortos** (6 caracteres, sin segundo factor) | Adivinar el código de un paciente probando muchas veces. Supabase limita los intentos, pero un código como `123456` es débil | Códigos generados al azar por el hospital y un segundo factor (código por SMS o correo) para el personal |
+| **Modo demo con códigos visibles** en `js/demo-data.js` | Cualquiera puede leer las cuentas demo. Solo dan acceso a datos **ficticios** guardados en ese navegador, nunca a Supabase | En producción, quitar el modo demo del sitio publicado |
+| **`autor_nombre` lo escribe el navegador** en la sala | Alguien con sesión podría poner «Recepción» como apodo y hacerse pasar por el personal | Calcular el nombre en la base de datos (trigger) a partir del perfil, no aceptarlo del navegador |
+| **Filtro de groserías básico** (lista corta de palabras) | Se evade con variaciones («t0nto») o groserías que no están en la lista | Lista más amplia, normalizar números y símbolos, y seguir con la moderación humana como respaldo |
+| **Sin registro de auditoría** | No queda registro de quién abrió qué expediente | Tabla de auditoría con triggers (quién, qué, cuándo), que exigen las normas de expediente clínico |
+| **Sin política de contenido (CSP)** | Si apareciera un XSS, el navegador no lo bloquearía | Agregar `Content-Security-Policy` en `vercel.json` con los dominios exactos (Supabase, OpenStreetMap, Leaflet, fuentes) y probar cada función |
+| **Plan gratuito de Supabase** | Sin respaldos programados ni recuperación a un punto en el tiempo | Plan de pago con respaldos antes de guardar datos reales |
+| **Servidores públicos de mapas** (Overpass, Nominatim, OSRM) | Pueden fallar o limitar el uso. No es un riesgo de datos, sino de disponibilidad | Servidor propio si el tráfico crece (ver diagnóstico) |
+
 ## Decisiones de diseño vs. sugerencias del IS
 
 IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conversación real del proyecto.
@@ -200,8 +264,16 @@ IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conv
 
 - **Etapa:** deployment / escalabilidad.
 - **Qué propuso el IS:** para que Lupita respondiera palabras nuevas en el link publicado, crear una clave en console.anthropic.com, agregar un método de pago y guardarla como `ANTHROPIC_API_KEY` en Vercel, con un tope de gasto en la consola como segunda protección.
-- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar la clave. Al probar yo el link publicado sin clave encontré dos errores que el IS no había señalado. Primero: Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario. Lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Segundo: aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
+- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar dos variables en Vercel. Al probar yo el link publicado sin clave encontré dos errores que el IS no había señalado. Primero: Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario. Lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Segundo: aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
 - **Por qué:** es un proyecto escolar sin presupuesto, y ninguna función principal depende de la IA (ruta, medicinas, citas, expediente, avisos, chat, Cerca de mí y el espacio del personal funcionan sin ella). Con la clave, el gasto máximo sería de ~US$440 al mes; sin ella es US$0 y no hay forma de que alguien me genere un cobro. Prefiero una Lupita más limitada pero gratuita y segura que depender de una tarjeta. Como muestra el diagnóstico, esta decisión también cambia el cuello de botella: deja de ser el costo de la IA y pasa a ser Supabase.
+
+### 6. Seguridad: el filtro del chat solo existía en el navegador
+
+- **Etapa:** seguridad (revisión final antes de entregar).
+- **Qué propuso el IS:** al revisar la entrega, el IS señaló que el README decía que el chat «bloquea teléfonos, correos, enlaces y groserías», pero ese filtro solo estaba en `js/app.js`. En Supabase, la tabla `sala_mensajes` solo limitaba el largo (240 caracteres). Cualquiera con sesión podía saltarse el filtro mandando el mensaje directo a la API de Supabase, también en la sala «Peques». Propuso repetir el filtro como regla en la base de datos.
+- **Qué decidí:** **aceptar.** Agregué la regla `sala_mensajes_sin_datos_ni_groserias` en `supabase/schema.sql`, con los mismos patrones del navegador. Dejé el filtro del navegador porque da un aviso amable al instante, pero la regla que manda es la del servidor. La puse como `not valid` para que no rechace mensajes viejos, solo los nuevos. No moví a la base de datos el problema de `autor_nombre` (alguien podría usar «Recepción» como apodo): lo dejé documentado en [Vulnerabilidades conocidas](#vulnerabilidades-conocidas-y-qué-haría-para-cerrarlas) como siguiente paso.
+- **Cómo lo verifiqué:** en el SQL Editor de Supabase intenté insertar en `sala_mensajes` un mensaje con un teléfono. Antes de la regla se guardaba; después, Supabase lo rechaza con el error `sala_mensajes_sin_datos_ni_groserias`. Un mensaje normal se sigue guardando.
+- **Por qué:** es la misma lección que el IS me señaló en el Assignment 1 con `script.js`: **lo que se valida solo en el navegador no protege nada**, porque cualquiera puede saltarse el navegador. En una sala donde escriben niñas y niños, un teléfono o un enlace de un desconocido es justo lo que hay que impedir. Lo documento como hallazgo del IS y no mío: ya conocía esa lección, pero no la había aplicado al chat.
 
 ## Cuentas de prueba (modo demo, sin Supabase)
 

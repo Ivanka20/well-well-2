@@ -1,0 +1,12 @@
+# well well — instrucciones para buscadores y robots
+# Ojo: robots.txt es una petición, no un candado. Los robots bien portados la respetan,
+# pero cualquiera puede ignorarla. Los datos de pacientes NO están protegidos por este
+# archivo, sino por Supabase Auth y las reglas RLS (ver README, "Capas de seguridad").
+
+# La página de inicio, Lupita y Cerca de mí son públicas: se pueden indexar.
+User-agent: *
+Allow: /
+# La función de la IA no es una página: no hay nada que indexar.
+Disallow: /api/
+# Instrucciones internas de Lupita.
+Disallow: /prompts/
