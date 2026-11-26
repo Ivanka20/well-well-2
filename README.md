@@ -142,154 +142,147 @@ npx vercel dev
 
 ### Protección de Lupita
 
-`/api/chat` solo responde a pacientes y personal con sesión real de Supabase. Límites: **20 preguntas por persona al día, 5 por minuto y 450 en toda la app al día** (se cambian en `consumir_pregunta_lupita`, en `supabase/schema.sql`). Las visitas y las cuentas demo usan el diccionario local.
+`/api/chat` solo responde a pacientes y personal con sesión real de Supabase. Límites: 20 preguntas por persona al día, 5 por minuto y 450 en toda la app al día (se cambian en `consumir_pregunta_lupita`, en `supabase/schema.sql`). Las visitas y las cuentas demo usan el diccionario local.
 
-**Qué pasa con cada pregunta, en orden.** Primero van los pasos que no cuestan nada y al final el único que cuesta. Si un paso falla o no se puede comprobar, la pregunta se detiene ahí:
+**Qué pasa con cada pregunta:** Si un paso falla o no se puede comprobar, la pregunta se detiene ahí:
 
 1. **En el navegador** (`js/lupi.js`): si no hay sesión y la palabra está en el diccionario, Lupita responde sin llamar al servidor. Si el servidor no da una respuesta, también usa el diccionario.
 2. **`api/chat.js`:** acepta solo `POST` con una pregunta de hasta 300 caracteres.
 3. **¿La IA está encendida?** Se necesitan `LUPITA_IA=activa` y la clave. Si no, responde `503 sin_ia` sin revisar la sesión ni gastar del límite.
 4. **¿Hay sesión?** (`api/_acceso.js`) Pide un token `Bearer` válido. Si no hay, responde `401`.
 5. **¿Quedan preguntas?** (`consumir_pregunta_lupita`, en Supabase) Revisa en este orden: que sea paciente o personal registrado, 20 al día por persona, 5 por minuto y 450 al día en toda la app. La función bloquea la fila de la persona (`for update`), así dos preguntas al mismo tiempo no pueden saltarse el límite.
-6. **Si Supabase no responde en 5 segundos** o devuelve algo inesperado: `503` y no se llama a Claude (falla cerrada).
-7. **Solo entonces se llama a Claude**, con un historial de máximo 6 mensajes y una respuesta de máximo 1024 tokens.
+6. Si Supabase no responde en 5 segundos o devuelve algo inesperado: `503` y no se llama a Claude (falla cerrada).
+7. Solo entonces se llama a Claude, con un historial de máximo 6 mensajes y una respuesta de máximo 1024 tokens.
 
-**Al publicar, ejecuta primero `supabase/schema.sql` y después despliega en Vercel.** Si la función de límites no existe, Lupita no llama a la IA y usa el diccionario.
+**Estado publicado:** https://well-well-2.vercel.app tiene la IA apagada (no existe `LUPITA_IA=activa`), así que Lupita funciona solo con su diccionario y la app no tiene costo. Con la IA apagada, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA hay que agregar **dos** variables en Vercel, `LUPITA_IA=activa` y `ANTHROPIC_API_KEY`, y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de arriba.
 
-**Estado publicado:** https://well-well-2.vercel.app tiene la IA apagada (no existe `LUPITA_IA=activa`), así que Lupita funciona solo con su diccionario y la app cuesta **US$0**. Con la IA apagada, `/api/chat` responde `503` con `codigo: "sin_ia"` **antes** de revisar la sesión (no gasta preguntas del límite ni crea el cliente de Claude), y Lupita dice «Esa palabra todavía no la conozco» en lugar de un error de conexión. Las palabras del diccionario se responden sin llamar al servidor. Para encender la IA hay que agregar **dos** variables en Vercel, `LUPITA_IA=activa` y `ANTHROPIC_API_KEY`, y volver a desplegar: entonces `/api/chat` sin sesión responde `401 Necesitas iniciar sesión` y aplican los límites de arriba.
+### Diagnóstico de escalabilidad
 
-### Diagnóstico de escalabilidad: dónde se rompe primero
+**Diagnóstico original (Sesión 22):** dije que el cuello de botella era el costo de Claude. Con un tope de gasto de US$500 al mes y US$0.011 por pregunta, se alcanzaría el tope con  4,545 usuarios activos al mes. Ese diagnóstico no tomaba en cuenta que `/api/chat` estaba abierta a cualquiera, y el número cambió cuando agregué los límites. Abajo está la versión corregida.
 
-**Diagnóstico original (Sesión 22):** dije que el cuello de botella era el costo de Claude. Con un tope de gasto de US$500 al mes y ~US$0.011 por pregunta, se llegaría al tope con unos **4,545 usuarios** activos al mes (10 preguntas cada uno). Ese diagnóstico no tomaba en cuenta que `/api/chat` estaba abierta a cualquiera (ver decisión 1), y el número cambió cuando agregué los límites. Abajo está la versión corregida.
+**Usuarios objetivo:** la app es para un hospital, así que el objetivo es 500 familias activas al mes. Con 10 preguntas por familia serían casi 5,000 preguntas al mes (alrededor de 170 diarias), por debajo del tope de 450 al día. Con este objetivo, la app funciona con los planes gratuitos aunque se encienda la IA.
 
-**Usuarios objetivo (supuesto):** la app es para un hospital, así que el objetivo es **unas 500 familias activas al mes**. Con 10 preguntas por familia serían ~5,000 preguntas al mes (~170 al día), por debajo del tope de 450 al día. Con este objetivo, la app funciona con los planes gratuitos aunque se encienda la IA.
+**Versión publicada (sin IA):** el costo es $0 y Lupita deja de ser un riesgo. Lo primero que se acercaría a un límite es Supabase, porque cada persona con sesión abre una conexión en tiempo real para recibir mensajes y avisos al momento; el plan gratuito limita cuántas conexiones simultáneas puede haber. Si se llena, los mensajes llegarán al recargar la página en lugar de al instante.
 
-**Versión publicada (sin IA):** el costo es US$0 y Lupita deja de ser un riesgo. Lo primero que se acercaría a un límite es **Supabase**, porque cada persona con sesión abre una conexión en tiempo real (`Store.subscribe` en `js/store.js`) para recibir mensajes y avisos al momento; el plan gratuito limita cuántas conexiones simultáneas puede haber. Si se llena, los mensajes llegarían al recargar la página en lugar de al instante.
-
-**Si se enciende la IA** (con la clave), el cuello de botella pasa a ser Lupita:
+**Si se enciende la IA (con la clave), el cuello de botella pasa a ser Lupita:**
 
 | Qué | Número real | Límite | ¿Cuándo se rompe? |
 |---|---|---|---|
-| **Límite global de Lupita** (puesto por mí) | 450 preguntas/día ≈ 13,500/mes | Tope propio en `consumir_pregunta_lupita` | **~1,350 usuarios activos al mes** (con 10 preguntas cada uno); un día con mucho uso lo alcanza antes |
+| Límite global de Lupita (puesto por mí) | 450 preguntas/día = 13,500/mes | Tope propio en `consumir_pregunta_lupita` | 1,350 usuarios activos al mes; un día con mucho uso lo alcanza antes |
 | Costo de Claude (`claude-opus-5-5`: US$4 por millón de tokens de entrada, US$20 de salida) | ~US$0.010 por pregunta típica; ~US$0.033 en el peor caso (historial completo + 1,024 tokens de respuesta) | Gasto mensual de la cuenta | No se alcanza: el tope global deja el peor caso en ~US$440/mes |
 | Vercel (plan gratuito) | Solo `/api/chat` usa funciones: ≤13,500 invocaciones/mes | 1,000,000 invocaciones/mes | Muy lejos |
 | Cerca de mí (Overpass, Nominatim, OSRM) | Se llaman desde el navegador de cada familia, no desde mi servidor | Uso justo por IP | Solo con muchísimo tráfico; entonces conviene un servidor propio |
 
-**Cuello de botella:** el límite global de Lupita. Lo puse a propósito: cambié un riesgo de **costo** (que llegaría de golpe) por un **límite de uso** que yo controlo. Cuando se alcanza, Lupita responde «ya respondió muchas preguntas hoy» y las familias usan el diccionario local hasta el día siguiente; el resto de la app sigue funcionando.
+**Cuello de botella:** el límite global de Lupita. Lo puse a propósito porque cambié un riesgo de costo por un límite de uso que yo controlo. Cuando se alcanza, Lupita responde "ya respondió muchas preguntas hoy" y las familias usan el diccionario local hasta el día siguiente; el resto de la app sigue funcionando.
 
-**La causa de fondo es de arquitectura:** cada pregunta es una llamada nueva a Claude, sin caché. Si 200 familias preguntan qué es «anestesia», se paga 200 veces. El siguiente paso sería guardar en Supabase las respuestas a palabras frecuentes y responder desde ahí. (La caché de prompts de Claude no ayuda aquí: las instrucciones de Lupita son de ~500 tokens, menos que el mínimo que se puede guardar.)
+Cada pregunta es una llamada nueva a Claude, sin caché. Si 200 familias preguntan qué es anestesia, se paga 200 veces. El siguiente paso sería guardar en Supabase las respuestas a palabras frecuentes y responder desde ahí. (La caché de prompts de Claude no ayuda aquí: las instrucciones de Lupita son de 500 tokens, menos que el mínimo que se puede guardar.)
 
-**Lo que todavía falta medir:** cuántas preguntas hace de verdad cada persona (supuse 10 al mes) y cuántos usuarios activos hay.
+Aun así, todavía falta medir: cuántas preguntas hace de verdad cada persona y cuántos usuarios activos hay.
 
 ## Capas de seguridad y vulnerabilidades conocidas
 
-well well guarda información médica de niñas, niños y adultos mayores, así que no confío en una sola protección. Uso varias capas (defensa en profundidad): si una falla, la siguiente sigue protegiendo. También documento lo que **todavía** es vulnerable. Esta versión es un prototipo funcional, no un sistema listo para datos reales, y sé qué falta para que lo sea.
+well well guarda información médica de niñas, niños y adultos mayores, así que no confío en una sola protección. Uso varias capas (defensa en profundidad): si una falla, la siguiente sigue protegiendo. También documento lo que todavía es vulnerable.
 
 ### Capas que ya existen
 
 | # | Capa | Qué evita | Dónde está |
 |---|---|---|---|
-| 1 | **Cuentas creadas por el hospital** + ID y código de acceso | Que cualquiera entre con el ID impreso en la pulsera (decisión 2) | Supabase Auth |
-| 2 | **Reglas RLS en la base de datos** | Que un paciente lea datos de otro, o que el personal vea pacientes que no tiene asignados, aunque alguien llame a la API directo | `supabase/schema.sql` |
-| 3 | **Solo claves publicables en el navegador** | Que alguien copie una clave secreta del código. La clave publicable no da permisos: los da la sesión + RLS | `js/store.js`, `api/_acceso.js` |
-| 4 | **Validación en el servidor** | Que se salten reglas del navegador: filtro del chat (decisión 6), largo de los textos, valores permitidos (`check`) | `supabase/schema.sql` |
-| 5 | **Límites de uso** (rate limiting) y **falla cerrada** en Lupita | Abuso con scripts y gasto sin control (decisión 1) | `api/_acceso.js`, `consumir_pregunta_lupita` |
-| 6 | **Interruptor explícito de la IA** | Gastar dinero por una clave olvidada (decisión 5) | `api/chat.js` |
-| 7 | **Escapar todo el texto** antes de mostrarlo (`esc()`) | Que un mensaje con código HTML/JavaScript se ejecute en el navegador de otra persona (XSS) | `js/app.js` |
-| 8 | **Moderación humana** | Lo que un filtro automático no detecta: el personal puede borrar mensajes de la sala | RLS «sala: moderar» |
-| 9 | **Encabezados de seguridad HTTP** | Que la app se abra dentro de otra página para engañar al usuario (`X-Frame-Options`), que el navegador adivine tipos de archivo (`nosniff`), filtrar la URL a otros sitios (`Referrer-Policy`), usar cámara o micrófono (`Permissions-Policy`) | `vercel.json` |
-| 10 | **Datos mínimos** | En la sala solo aparece apodo + cuarto, nunca el nombre completo. La ubicación de Cerca de mí no se guarda. La etapa de recuperación no usa el diagnóstico | `js/app.js`, `js/servicios.js` |
-| 11 | **HTTPS** | Que alguien lea los datos en el camino | Vercel (automático) |
+| 1 | Cuentas creadas por el hospital + ID y código de acceso | Que cualquiera entre con el ID impreso en su hoja de ingreso | Supabase Auth |
+| 2 | Reglas RLS en la base de datos | Que un paciente lea datos de otro, o que el personal vea pacientes que no tiene asignados, aunque alguien llame a la API directo | `supabase/schema.sql` |
+| 3 | Solo claves publicables en el navegador | Que alguien copie una clave secreta del código. La clave publicable no da permisos: los da la sesión + RLS | `js/store.js`, `api/_acceso.js` |
+| 4 | Validación en el servidor | Que se salten reglas del navegador: filtro del chat, largo de los textos, valores permitidos (`check`) | `supabase/schema.sql` |
+| 5 | Límites de uso (rate limiting) y falla cerrada en Lupita | Abuso con scripts y gasto sin control | `api/_acceso.js`, `consumir_pregunta_lupita` |
+| 6 | Interruptor explícito de la IA | Gastar dinero por una clave olvidada) | `api/chat.js` |
+| 7 | Escapar todo el texto antes de mostrarlo (`esc()`) | Que un mensaje con código HTML/JavaScript se ejecute en el navegador de otra persona (XSS) | `js/app.js` |
+| 8 | Moderación humana | Lo que un filtro automático no detecta: el personal puede borrar mensajes de la sala | RLS «sala: moderar» |
+| 9 | Encabezados de seguridad HTTP | Que la app se abra dentro de otra página para engañar al usuario (`X-Frame-Options`), que el navegador adivine tipos de archivo (`nosniff`), filtrar la URL a otros sitios (`Referrer-Policy`), usar cámara o micrófono (`Permissions-Policy`) | `vercel.json` |
+| 10 | Datos mínimos | En la sala solo aparecen apodo + cuarto, nunca el nombre completo. La ubicación de Cerca de mí no se guarda. La etapa de recuperación no usa el diagnóstico | `js/app.js`, `js/servicios.js` |
+| 11 | HTTPS | Que alguien lea los datos en el camino | Vercel |
 
 **Lo que NO es una capa de seguridad: `robots.txt`.** Le pide a los buscadores que no indexen `/api/` ni `/prompts/`, pero es una petición, no un candado: un robot malicioso la ignora, y el archivo es público. De hecho, `/prompts/` sigue siendo accesible. No importa porque no es un secreto: el repositorio también es público. **La seguridad de well well no depende de que el código sea secreto**, sino de la sesión y las reglas RLS. Por eso las instrucciones de Lupita no contienen datos de pacientes ni claves.
 
-### Vulnerabilidades conocidas (y qué haría para cerrarlas)
+### Vulnerabilidades conocidas
 
 | Vulnerabilidad | Riesgo | Siguiente paso |
 |---|---|---|
 | **Códigos de acceso cortos** (6 caracteres, sin segundo factor) | Adivinar el código de un paciente probando muchas veces. Supabase limita los intentos, pero un código como `123456` es débil | Códigos generados al azar por el hospital y un segundo factor (código por SMS o correo) para el personal |
-| **Modo demo con códigos visibles** en `js/demo-data.js` | Cualquiera puede leer las cuentas demo. Solo dan acceso a datos **ficticios** guardados en ese navegador, nunca a Supabase | En producción, quitar el modo demo del sitio publicado |
-| **`autor_nombre` lo escribe el navegador** en la sala | Alguien con sesión podría poner «Recepción» como apodo y hacerse pasar por el personal | Calcular el nombre en la base de datos (trigger) a partir del perfil, no aceptarlo del navegador |
-| **Filtro de groserías básico** (lista corta de palabras) | Se evade con variaciones («t0nto») o groserías que no están en la lista | Lista más amplia, normalizar números y símbolos, y seguir con la moderación humana como respaldo |
+| Modo demo con códigos visibles en `js/demo-data.js` | Cualquiera puede leer las cuentas demo. Solo dan acceso a datos ficticios guardados en ese navegador, nunca a Supabase | En producción, quitar el modo demo del sitio publicado |
+| **`autor_nombre` lo escribe el navegador** en la sala | Alguien con sesión podría poner "Recepción" como apodo y hacerse pasar por el personal | Calcular el nombre en la base de datos (trigger) a partir del perfil, no aceptarlo del navegador |
+| Filtro de groserías básico | Se evade con variaciones (t0nto) o groserías que no están en la lista | Lista más amplia, normalizar números y símbolos, y seguir con la moderación humana como respaldo |
 | **Sin registro de auditoría** | No queda registro de quién abrió qué expediente | Tabla de auditoría con triggers (quién, qué, cuándo), que exigen las normas de expediente clínico |
 | **Sin política de contenido (CSP)** | Si apareciera un XSS, el navegador no lo bloquearía | Agregar `Content-Security-Policy` en `vercel.json` con los dominios exactos (Supabase, OpenStreetMap, Leaflet, fuentes) y probar cada función |
-| **Plan gratuito de Supabase** | Sin respaldos programados ni recuperación a un punto en el tiempo. Además, Supabase **pausa el proyecto** si pasa una semana sin uso: me pasó antes de entregar. Mientras está pausado, la app no se cae, porque `js/store.js` usa el modo demo si Supabase no responde. Pero los datos reales no están disponibles hasta restaurarlo | Plan de pago con respaldos, sin pausas, antes de guardar datos reales |
-| **Servidores públicos de mapas** (Overpass, Nominatim, OSRM) | Pueden fallar o limitar el uso. No es un riesgo de datos, sino de disponibilidad | Servidor propio si el tráfico crece (ver diagnóstico) |
+| **Plan gratuito de Supabase** | Sin respaldos programados ni recuperación a un punto en el tiempo. Además, Supabase pausa el proyecto si pasa una semana sin uso: me pasó antes de entregar. Mientras está pausado, la app no se cae, porque `js/store.js` usa el modo demo si Supabase no responde. Pero los datos reales no están disponibles hasta restaurarlo | Plan de pago con respaldos, sin pausas, antes de guardar datos reales |
+| Servidores públicos de mapas (Overpass, Nominatim, OSRM) | Pueden fallar o limitar el uso. Es un riesgo de datos de disponibilidad | Servidor propio si el tráfico crece (ver diagnóstico) |
 
 ## Decisiones de diseño vs. sugerencias del IS
-
-IS = sistema inteligente (Claude, en Claude Code). Cada entrada sale de una conversación real del proyecto.
 
 ### 1. Seguridad y escalabilidad: Lupita estaba abierta a cualquiera
 
 - **Etapa:** seguridad / escalabilidad (diagnóstico de la Sesión 22).
-- **Qué propuso el IS:** al revisar los números, advirtió que `/api/chat` «acepta preguntas de cualquiera, sin sesión ni límite. En el peor caso, un script a una pregunta por segundo gastaría $500 en unas 4.3 horas y apagaría Lupita para todos». Propuso exigir sesión en `/api/chat` y guardar un límite de preguntas por persona en la base de datos.
-- **Qué decidí:** **aceptar y ampliar.** `api/_acceso.js` exige una sesión real de Supabase antes de llamar a Claude, y la función `consumir_pregunta_lupita` (en `supabase/schema.sql`) cuenta 20 preguntas por persona al día, 5 por minuto y 450 para toda la app. Las visitas y las cuentas demo usan el diccionario local.
-- **Por qué:** el riesgo no era solo de dinero sino de disponibilidad. Una sola persona con un script podía dejar sin Lupita a todas las familias. Un límite solo por persona no basta (alguien puede crear varias cuentas), por eso también hay un tope global, que fija el gasto máximo en ~US$440/mes aunque la app crezca. Si Supabase no responde, la función no llama a la IA (falla cerrada): prefiero que Lupita use el diccionario a gastar sin control.
-- **Cómo lo verifiqué:** volví a calcular el gasto con el peor caso y los números del código (US$0.0326 por pregunta × 450 al día × 30 días ≈ US$440 al mes). Con eso vi que mi diagnóstico de la Sesión 22 ya no era correcto: el costo dejó de ser lo primero que se rompe y el límite pasó a ser el tope global (~1,350 usuarios al mes). Corregí el número en este README.
+- **Qué propuso el IS:** al revisar los números, advirtió que `/api/chat` acepta preguntas de cualquiera, sin sesión ni límite. En el peor caso, un script a una pregunta por segundo gastaría $500 en unas 4.3 horas y apagaría Lupita para todos. Propuso exigir sesión en `/api/chat` y guardar un límite de preguntas por persona en la base de datos.
+- **Qué decidí:** ACEPTAR Y EXPANDIR. `api/_acceso.js` exige una sesión real de Supabase antes de llamar a Claude, y la función `consumir_pregunta_lupita` (en `supabase/schema.sql`) cuenta 20 preguntas por persona al día, 5 por minuto y 450 para toda la app. Las visitas y las cuentas demo usan el diccionario local.
+- **Justificación:** el riesgo no era solo de dinero sino de disponibilidad. Una sola persona con un script podía dejar sin Lupita a todas las familias. Un límite solo por persona no basta (porque alguien puede crear varias cuentas), por eso también hay un tope global, que fija el gasto máximo en US$440/mes aunque la app crezca. Si Supabase no responde, prefiero que Lupita use el diccionario a gastar sin control.
+- **Cómo lo verifiqué:** volví a calcular el gasto con el peor caso y los números del código. Con eso vi que mi diagnóstico de la Sesión 22 ya no era correcto: el costo dejó de ser lo primero que se rompe y el límite pasó a ser el tope global (1,350 usuarios al mes).
 
-### 2. Seguridad: entrar solo con el ID de la pulsera
+### 2. Seguridad: entrar solo con el ID de la hoja de registro
 
 - **Etapa:** funcionalidad / seguridad (inicio de sesión).
-- **Qué propuso el IS:** en la landing page original, el IS advirtió que las cuentas estaban escritas en `script.js` y «cualquiera podría verlos. Con datos médicos reales, el inicio de sesión tiene que validarse en un servidor». Después, al rehacer la app, agregó un **código de acceso** además del ID, porque el ID del paciente va impreso en la pulsera y «cualquiera que lo vea en una pulsera podría entrar».
-- **Qué decidí:** **aceptar.** El inicio de sesión ahora pasa por Supabase Auth (ID + código como contraseña), y las reglas RLS de `supabase/schema.sql` hacen que cada paciente solo lea sus datos y el personal solo los de sus pacientes asignados. Además, las cuentas las crea el hospital: se puede apagar el registro abierto.
-- **Por qué:** es un expediente médico de niñas, niños y adultos mayores. Un ID visible en una pulsera es un identificador, no una contraseña. Validar en el navegador no protege nada porque el código se puede leer; la validación y los permisos tienen que estar en el servidor (Supabase).
+- **Qué propuso el IS:** en la landing page original, el IS advirtió que las cuentas estaban escritas en `script.js` y cualquiera podría verlas. Con datos médicos reales, el inicio de sesión tiene que validarse en un servidor. Después, al rehacer la app, agregó un código de acceso además del ID, porque el ID del paciente va impreso en la hoja de registro y cualquiera que lo vea en una pulsera podría entrar.
+- **Justificación:** ACEPTAR. El inicio de sesión ahora pasa por Supabase Auth (ID + código como contraseña), y las reglas RLS de `supabase/schema.sql` hacen que cada paciente solo lea sus datos y el personal solo los de sus pacientes asignados. Además, las cuentas las crea el hospital: se puede apagar el registro abierto. Es un expediente médico de niñas, niños y adultos mayores. Un ID visible en una pulsera es un identificador, no una contraseña. Validar en el navegador no protege nada porque el código se puede leer; la validación y los permisos tienen que estar en el servidor (Supabase).
 
-### 3. Funcionalidad y deployment: Google Places vs. OpenStreetMap en «Cerca de mí»
+### 3. Google Places vs. OpenStreetMap en "Cerca de mí"
 
 - **Etapa:** funcionalidad / deployment.
-- **Qué propuso el IS:** construir «Cerca de mí» con **Google Places API (New)** y **Maps JavaScript API**. Para que funcionara había que activar la facturación en Google Cloud y crear una clave; además, el IS explicó que las condiciones de Google no permiten mostrar resultados de Places en un mapa que no sea de Google.
-- **Qué decidí:** **rechazar** y pedir OpenStreetMap + Overpass API + Leaflet (con Nominatim para direcciones y OSRM para rutas).
-- **Por qué:** con Google, cada búsqueda cuesta dinero y necesita una tarjeta y una clave pública en el navegador, que alguien podría copiar y gastar; también me ataba a usar solo mapas de Google. Con OpenStreetMap no hay clave, ni facturación, ni nada que configurar para desplegar en Vercel. La desventaja es que los datos de la comunidad pueden estar incompletos; por eso la app lo dice, marca las direcciones aproximadas, nunca supone datos de accesibilidad y recomienda llamar antes de ir.
+- **Qué propuso el IS:** construir "Cerca de mí" con Google Places API y Maps JavaScript API. Para que funcionara, había que activar la facturación en Google Cloud y crear una clave; además, el IS explicó que las condiciones de Google no permiten mostrar resultados de Places en un mapa que no sea de Google.
+- **Qué decidí:** RECHAZAR y pedir OpenStreetMap + Overpass API + Leaflet (con Nominatim para direcciones y OSRM para rutas).
+- **Justificación:** con Google, cada búsqueda cuesta dinero y necesita una tarjeta y una clave pública en el navegador, que alguien podría copiar y gastar; también me ataba a usar solo mapas de Google. Con OpenStreetMap no hay clave ni facturación ni nada que configurar para desplegar en Vercel. La desventaja es que los datos de la comunidad pueden estar incompletos; por eso la app lo dice, marca las direcciones aproximadas, nunca supone datos de accesibilidad y recomienda llamar antes de ir.
 
-### 4. Mockup: el tono visual de un hospital
+### 4. Mockup
 
 - **Etapa:** mockup.
-- **Qué propuso el IS:** en las primeras versiones de la landing y de la app usó una tipografía muy informal para el público infantil.
-- **Qué decidí:** **revisar.** Le pedí «que el diseño no sea como totalmente infantil… Estamos hablando de un hospital», y después que no usara «una tipografía tan informal como antes». Me quedé con la paleta de color y las letras recortadas como detalle, pero con una serif seria (Transcity, o Young Serif como respaldo) para el texto.
-- **Por qué:** la app la usan niñas y niños, pero también sus papás, adultos mayores y el personal del hospital, y muestra información médica. Un tono demasiado infantil le resta confianza a un expediente y a las indicaciones de medicinas; el toque lúdico se queda en Lupita y en los detalles, no en la información.
+- **Qué propuso el IS:** en las primeras versiones de la landing y de la app usó una tipografía muy informal.
+- **Qué decidí:** REVISAR. Le pedí que el diseño no fuera totalmente infantil porque estamos hablando de un hospital, y después que no usara una tipografía tan informal como antes. Me quedé con la paleta de color y las letras recortadas como detalle, pero con una fuente más seria para el texto.
+- **Justificación:** la app la usan niñas y niños, pero también sus papás, adultos mayores y el personal del hospital, y muestra información médica. Un tono demasiado infantil le resta confianza a un expediente y a las indicaciones de medicinas; el toque lúdico se queda en Lupita y en los detalles, no en la información.
 
 ### 5. Escalabilidad (costo): publicar Lupita sin IA
 
 - **Etapa:** deployment / escalabilidad.
 - **Qué propuso el IS:** para que Lupita respondiera palabras nuevas en el link publicado, crear una clave en console.anthropic.com, agregar un método de pago y guardarla como `ANTHROPIC_API_KEY` en Vercel, con un tope de gasto en la consola como segunda protección.
-- **Qué decidí:** **revisar.** Publiqué sin la clave: Lupita responde con su diccionario (anestesia, biopsia, catéter, suero, hemograma, tomografía, ayuno, sutura, oxímetro, alta médica…) y sigue llevando a Cerca de mí. El código de la IA y su protección (sesión + límites de la decisión 1) quedan publicados y listos: encenderla solo requiere agregar dos variables en Vercel. Al probar yo el link publicado sin clave encontré dos errores que el IS no había señalado. Primero: Lupita respondía «no me pude conectar» y además gastaba una pregunta del límite diario. Lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda «Esa palabra todavía no la conozco», así se ve como una decisión y no como una falla. Segundo: aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` **y** la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
-- **Por qué:** es un proyecto escolar sin presupuesto, y ninguna función principal depende de la IA (ruta, medicinas, citas, expediente, avisos, chat, Cerca de mí y el espacio del personal funcionan sin ella). Con la clave, el gasto máximo sería de ~US$440 al mes; sin ella es US$0 y no hay forma de que alguien me genere un cobro. Prefiero una Lupita más limitada pero gratuita y segura que depender de una tarjeta. Como muestra el diagnóstico, esta decisión también cambia el cuello de botella: deja de ser el costo de la IA y pasa a ser Supabase.
+- **Qué decidí:** REVISAR. Publiqué sin la clave: Lupita responde con su diccionario y sigue llevando a "Cerca de mí". El código de la IA y su protección  quedan publicados y listos: encenderla solo requiere agregar dos variables en Vercel. Al probar yo el link publicado sin clave, encontré dos errores que el IS no había señalado. **Primero:** Lupita respondía "no me pude conectar" y además gastaba una pregunta del límite diario. Lo cambié para que `/api/chat` diga `sin_ia` antes de revisar la sesión y Lupita responda "Esa palabra todavía no la conozco", así se ve como una decisión y no como una falla. **Segundo:** aunque quité la clave de Vercel, el link seguía actuando como si la IA estuviera encendida; en lugar de depender de que la clave exista o no, agregué un interruptor explícito: la IA solo se enciende con `LUPITA_IA=activa` y la clave. Encender algo que cuesta dinero tiene que ser una decisión a propósito, no el efecto de una clave olvidada.
+- **Justificación:** es un proyecto sin presupuesto y ninguna función principal depende de la IA. Con la clave, el gasto máximo sería de alrededor de US$440 al mes; sin ella es de $0. Prefiero una Lupita más limitada pero gratuita y segura que depender de una tarjeta. Como muestra el diagnóstico, esta decisión también cambia el cuello de botella.
 
-### 6. Seguridad: el filtro del chat solo existía en el navegador
+### 6. El filtro del chat solo existía en el navegador
 
 - **Etapa:** seguridad (revisión final antes de entregar).
-- **Qué propuso el IS:** al revisar la entrega, el IS señaló que el README decía que el chat «bloquea teléfonos, correos, enlaces y groserías», pero ese filtro solo estaba en `js/app.js`. En Supabase, la tabla `sala_mensajes` solo limitaba el largo (240 caracteres). Cualquiera con sesión podía saltarse el filtro mandando el mensaje directo a la API de Supabase, también en la sala «Peques». Propuso repetir el filtro como regla en la base de datos.
-- **Qué decidí:** **aceptar.** Agregué la regla `sala_mensajes_sin_datos_ni_groserias` en `supabase/schema.sql`, con los mismos patrones del navegador. Dejé el filtro del navegador porque da un aviso amable al instante, pero la regla que manda es la del servidor. La puse como `not valid` para que no rechace mensajes viejos, solo los nuevos. No moví a la base de datos el problema de `autor_nombre` (alguien podría usar «Recepción» como apodo): lo dejé documentado en [Vulnerabilidades conocidas](#vulnerabilidades-conocidas-y-qué-haría-para-cerrarlas) como siguiente paso.
-- **Cómo lo verifiqué:** en el SQL Editor de Supabase intenté insertar en `sala_mensajes` un mensaje con un teléfono. Antes de la regla se guardaba; después, Supabase lo rechaza con el error `sala_mensajes_sin_datos_ni_groserias`. Un mensaje normal se sigue guardando. Capturas: [antes](evidencia/filtro-antes.png) y [después](evidencia/filtro-despues.png).
-- **Por qué:** es la misma lección que el IS me señaló en el Assignment 1 con `script.js`: **lo que se valida solo en el navegador no protege nada**, porque cualquiera puede saltarse el navegador. En una sala donde escriben niñas y niños, un teléfono o un enlace de un desconocido es justo lo que hay que impedir. Lo documento como hallazgo del IS y no mío: ya conocía esa lección, pero no la había aplicado al chat.
+- **Qué propuso el IS:** al revisar la entrega, el IS señaló que el README decía que el chat bloqueaba teléfonos, correos, enlaces y groserías, pero ese filtro solo estaba en `js/app.js`. En Supabase, la tabla `sala_mensajes` solo limitaba el largo (240 caracteres). Cualquiera con sesión podía saltarse el filtro mandando el mensaje directo a la API de Supabase, también en la sala "Peques". Propuso repetir el filtro como regla en la base de datos.
+- **Qué decidí:** ACEPTAR. Agregué la regla `sala_mensajes_sin_datos_ni_groserias` en `supabase/schema.sql`, con los mismos patrones del navegador. Dejé el filtro del navegador porque da un aviso amable al instante, pero la regla que manda es la del servidor. La puse como `not valid` para que no rechace mensajes viejos, solo los nuevos. No moví a la base de datos el problema de `autor_nombre`: lo dejé documentado en "Vulnerabilidades conocidas".
+- **Cómo lo verifiqué:** en el SQL Editor de Supabase intenté insertar en `sala_mensajes` un mensaje con un teléfono. Antes de la regla se guardaba; después, Supabase lo rechaza con el error `sala_mensajes_sin_datos_ni_groserias`. Un mensaje normal se sigue guardando. Capturas de ello en la carpeta de evidencias.
+- **Justificación:** es la misma lección que el IS me señaló en el Assignment 1 con `script.js`: **lo que se valida solo en el navegador no protege nada**, porque cualquiera puede saltarse el navegador. En una sala donde escriben niñas y niños, un teléfono o un enlace de un desconocido es justo lo que hay que impedir. Lo documento como hallazgo del IS y no mío: ya conocía esa lección, pero no la había aplicado al chat.
 
-## Historial de commits: qué decisión hay detrás de cada mensaje genérico
+## Historial de commits
 
-Subí casi todo con **«Add files via upload»** desde la página de GitHub, que pone ese mensaje por defecto. Por eso 40 de los 50 commits tienen mensajes genéricos. No reescribo el historial: aquí explico los commits importantes. Desde la entrega final, cada commit lleva un mensaje que describe la decisión.
-
-**Commits importantes** (del más antiguo al más reciente):
+Subí casi todo con «Add files via upload» desde la página de GitHub, que pone ese mensaje por defecto. Por eso 40 de los 50 commits tienen mensajes genéricos. Entonces aquí solo explico los commits más importantes.
 
 | Commit | Mensaje original | Qué decisión hay detrás |
 |---|---|---|
 | `f6fc833` | Add files via upload | Primera versión de la app (Assignment 2): espacios de paciente y personal, Lupita, Supabase con RLS y modo demo |
-| `2eac841`, `e00adf9` | Update print statement from 'Hello' to 'Goodbye' | **El mensaje no tiene nada que ver con el cambio.** Reescriben `app.js` (dosis del día, «Lo que sigue», «Deshacer») y `styles.css` con la paleta y las fuentes nuevas (decisión 4) |
-| `8b51ed9` | Add files via upload | Seguridad: regla RLS para que el personal pueda deshacer **solo sus propios** avisos |
-| `bb57795` | Add files via upload | Crea **Cerca de mí** (`js/servicios.js`) y los lugares guardados |
-| `7b1b3ce` | Add files via upload | Versión con **Google Maps/Places**: la propuesta del IS de la decisión 3 |
-| `be1dacb` | Add files via upload | **Rechazo Google** y cambio a OpenStreetMap + Overpass + Nominatim (decisión 3) |
+| `2eac841`, `e00adf9` | Update print statement from 'Hello' to 'Goodbye' | El mensaje no tiene nada que ver con el cambio. Reescriben `app.js` (dosis del día, "Lo que sigue", "Deshacer") y `styles.css` con la paleta y las fuentes nuevas) |
+| `8b51ed9` | Add files via upload | Regla RLS para que el personal pueda deshacer solo sus propios avisos |
+| `bb57795` | Add files via upload | Crea **"Cerca de mí"** (`js/servicios.js`) y los lugares guardados |
+| `7b1b3ce` | Add files via upload | Versión con Google Maps/Places |
+| `be1dacb` | Add files via upload | **Rechazo Google** y cambio a OpenStreetMap + Overpass + Nominatim |
 | `39806e3` | Add files via upload | Mapa con Leaflet, marcadores numerados y rutas paso a paso con OSRM |
 | `12db2b9`, `d0cdfa8` | Update store.js / Add files via upload | Cambio la conexión a otro proyecto de Supabase y en el siguiente commit la regreso al original (`xkfoiggivoxiwwkzcpbe`), que es el que usa la app |
 | `dbe7d11` | Add files via upload | Saco las instrucciones de Lupita del código a `prompts/` para tener una sola versión, y creo `vercel.json` para incluirlas al desplegar |
-| `431bbf4` | Add files via upload | **Seguridad y escalabilidad:** Lupita exige sesión real y tiene límites de 20/5/450 (decisión 1) |
-| `da4228c` | Add files via upload | **Costo:** Lupita funciona sin IA y responde `sin_ia` sin gastar del límite (decisión 5) |
-| `02b2d27` | Add files via upload | **Costo:** interruptor explícito `LUPITA_IA=activa` (decisión 5) |
-| `9f8ba30` | Add files via upload | **Seguridad:** encabezados HTTP, `robots.txt` y las secciones de mercado y capas de seguridad |
+| `431bbf4` | Add files via upload | Lupita exige sesión real y tiene límites de 20/5/450 (decisión 1) |
+| `da4228c` | Add files via upload | Lupita funciona sin IA y responde `sin_ia` sin gastar del límite (decisión 5) |
+| `02b2d27` | Add files via upload | Interruptor explícito `LUPITA_IA=activa` (decisión 5) |
+| `9f8ba30` | Add files via upload | Encabezados HTTP, `robots.txt` y las secciones de mercado y capas de seguridad |
 
-**Los demás commits genéricos** son menores: colores y estilos (`21e76e9`, `53dd4e9`, `5c5251d`, `8bf5c74`, `a58e7c4`, `9c4fa36`), el rediseño del personaje de Lupita (`ce2eae2`), documentación del README y la bitácora (los «Update BITÁCORA.md», `6da5909`, `45120c9`, `5b3fe8a`, `9a2eb0e`) y dos commits vacíos (`720d438`, `66e6c9e`).
+Los demás commits genéricos son menores: colores y estilos (`21e76e9`, `53dd4e9`, `5c5251d`, `8bf5c74`, `a58e7c4`, `9c4fa36`), el rediseño del personaje de Lupita (`ce2eae2`), documentación del README y la bitácora (los «Update BITÁCORA.md», `6da5909`, `45120c9`, `5b3fe8a`, `9a2eb0e`) y dos commits vacíos (`720d438`, `66e6c9e`).
 
 **Errores que reconozco en el historial:**
-- Tres commits tienen mensajes que suenan bien pero **no coinciden con lo que cambiaron**: `9811a37` («Add SQL function to get patient ID») y `a65b026` solo agregan líneas en blanco, y `db13917` solo arregla una viñeta.
+- Tres commits tienen mensajes que suenan bien pero no coinciden con lo que cambiaron: `9811a37` («Add SQL function to get patient ID») y `a65b026` solo agregan líneas en blanco, y `db13917` solo arregla una viñeta.
 - `986bcc2` subió por error una copia de los archivos JS en `js/js/`. La app no la usa, y la borré en la entrega final.
 - `js/config.example.js` quedó de la versión con Google (`7b1b3ce`) aunque rechacé esa opción. También lo borré en la entrega final.
 
