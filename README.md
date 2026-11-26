@@ -35,15 +35,13 @@ Para entrar al espacio del paciente o del personal (`#/ingresar`), usa las [cuen
 **Quién lo pagaría.** El paciente no paga: el cliente es el **hospital**. Lo adopta porque reduce las preguntas repetidas en recepción y mejora la experiencia de la familia. Por eso las cuentas las crea el hospital (decisión 2) y el personal solo ve a sus pacientes asignados.
 
 **Por qué puede funcionar como producto real:**
-- **Cuesta US$0 empezar.** Funciona con los planes gratuitos de Vercel y Supabase y con servicios de mapas sin clave (decisiones 3 y 5). Un hospital puede hacer una prueba piloto sin presupuesto.
-- **Crece por hospital.** El objetivo inicial es un hospital, con unas 500 familias al mes (ver el diagnóstico de escalabilidad). Cada hospital nuevo suma usuarios de forma predecible.
-- **La IA es opcional.** Ninguna función principal depende de ella. Se enciende solo si el hospital decide pagarla, y aun así tiene un tope de gasto.
+ Porque funciona con los planes gratuitos de Vercel y Supabase y con servicios de mapas sin clave (decisiones 3 y 5). Un hospital puede hacer una prueba piloto sin presupuesto. Además, el objetivo inicial es un hospital, con unas 500 familias al mes (ver el diagnóstico de escalabilidad). Cada hospital nuevo suma usuarios de forma predecible. Y ninguna función principal depende de la IA integrada; se enciende solo si el hospital decide pagarla, y aun así tiene un tope de gasto.
 
 **Lo que haría falta antes de usarlo con pacientes reales en México:**
-- Cumplir con la ley de protección de datos personales: los datos de salud son *datos sensibles* y requieren aviso de privacidad y consentimiento expreso.
+- Cumplir con la ley de protección de datos personales.
 - Cumplir con las normas del expediente clínico (NOM-004-SSA3-2012) y de los sistemas de información en salud (NOM-024-SSA3-2012).
 - Que el contenido de Lupita lo revise personal médico.
-- Las capas de seguridad pendientes de la sección [Capas de seguridad](#capas-de-seguridad-y-vulnerabilidades-conocidas).
+- Las capas de seguridad pendientes.
 
 ## Rutas
 
@@ -103,14 +101,14 @@ Ruta: `#/servicios` (abierta para todos, sin iniciar sesión) o `#/servicios/<ca
 | **Lupita** | Si alguien le escribe a Lupita «necesito un lugar donde mi hijo pueda recibir fisioterapia», reconoce la categoría y ofrece un botón que abre Cerca de mí con esa búsqueda. |
 
 **No hay que configurar nada:** OpenStreetMap, Overpass API, Nominatim, los mosaicos del mapa y los servidores de rutas OSRM son gratuitos y no piden clave. Si un servidor de Overpass está saturado, la app prueba con dos servidores de respaldo y avisa a la familia. Los datos de OpenStreetMap los hace la comunidad y pueden estar incompletos; la app lo dice y recomienda llamar antes de ir. Para mucho tráfico conviene un servidor propio de Overpass/Nominatim.
-> La ubicación actual del navegador solo funciona en `https://` (Vercel) o en `localhost`.
+La ubicación actual del navegador solo funciona en `https://` (Vercel) o en `localhost`.
 
 ## Publicar (GitHub → Vercel)
 
 1. Sube esta carpeta a un repositorio de GitHub.
 2. En Vercel: **Add New → Project**, importa el repositorio. Framework: **Other**. No hace falta comando de build.
-3. Listo: así se publica sin IA (Lupita usa su diccionario y la app cuesta US$0).
-4. *(Opcional, para encender la IA)* En **Settings → Environment Variables** agrega **las dos** variables: `LUPITA_IA` con el valor `activa` y `ANTHROPIC_API_KEY` con tu clave de https://console.anthropic.com. Vuelve a desplegar. Con solo la clave, la IA sigue apagada.
+3. Listo: así se publica sin IA (Lupita usa su diccionario y la app no cuesta nada).
+4. En **Settings → Environment Variables** agrega las dos variables: `LUPITA_IA` con el valor `activa` y `ANTHROPIC_API_KEY` con tu clave de https://console.anthropic.com. Vuelve a desplegar. Con solo la clave, la IA sigue apagada.
 
 | Variable | ¿Obligatoria? | Para qué |
 |---|---|---|
@@ -137,21 +135,10 @@ npx vercel dev
 
 ## Base de datos (Supabase)
 
-0. **Si usas tu propio proyecto de Supabase**, cambia `SUPABASE_URL` y `SUPABASE_KEY` (la clave *publishable*, nunca la *secret*) en `js/store.js` y pon los mismos valores en las variables `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` de Vercel (o cámbialos en `api/_acceso.js`).
-1. Supabase → **SQL Editor** → pega y ejecuta `supabase/schema.sql` (es seguro volver a ejecutarlo: agrega las columnas `etapa_recuperacion` y `apoyos_sugeridos` y la tabla `lugares_guardados`; si ya tenías una versión anterior de esa tabla, la ajusta sin borrar nada).
-2. Por cada paciente o persona del personal, crea un usuario en **Authentication → Users → Add user** (marca *Auto Confirm*):
-   - Paciente `WW-2048-17` → correo `ww-2048-17@paciente.wellwell.app`
-   - Personal `REC-0042` → correo `rec-0042@personal.wellwell.app`
-   - La contraseña es su **código de acceso** (mínimo 6 caracteres).
-3. Llena sus datos en las tablas (o ejecuta `supabase/seed.sql` como ejemplo). Para Cerca de mí, opcionalmente:
-   ```sql
-   update public.pacientes
-   set etapa_recuperacion = 'rehabilitacion',
-       apoyos_sugeridos = array['rehabilitacion', 'fisioterapia']
-   where codigo = 'WW-2048-17';
-   ```
-4. Documentos del expediente: sube los PDF a **Storage** y pega su enlace en la columna `url` de la tabla `documentos`. Así los botones "Ver" y "Descargar" abren el archivo real.
-5. En **Authentication → Providers → Email**, puedes desactivar "Allow new users to sign up": las cuentas las crea el hospital.
+1. En Supabase → SQL Editor, ejecuta `supabase/schema.sql` (crea tablas, reglas RLS, límites de Lupita y el filtro del chat; se puede volver a ejecutar sin borrar datos).
+2. Las cuentas las crea el hospital en Authentication → Users: el ID se convierte en correo (`WW-2048-17` → `ww-2048-17@paciente.wellwell.app`) y el código de acceso es la contraseña.
+3. Desactiva "Allow new users to sign up" para que nadie cree cuentas por su cuenta.
+4. Opcional: `supabase/seed.sql` trae datos de ejemplo.
 
 ### Protección de Lupita
 
